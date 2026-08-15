@@ -264,14 +264,28 @@ export class NeutralinoBackend implements WindowBackend {
 
     // Expose the pet asset roots to the frontend: bundled pets under `/pets`,
     // user-imported pets under `/user-pets` (they live outside the package).
+    // The user directory may not exist yet (no imports so far) — create it so
+    // the mount always succeeds, and keep the two mounts independent: a
+    // missing/failed user mount must never take down the window (built-in
+    // pets must still render), only a failed bundled mount is fatal.
+    try {
+      mkdirSync(USER_PETS_DIR, { recursive: true })
+    } catch {
+      // Best-effort; the mount below will surface any real failure.
+    }
     try {
       await conn.call('server.mount', { path: '/pets', target: PETS_DIR })
-      await conn.call('server.mount', { path: '/user-pets', target: USER_PETS_DIR })
     } catch (error) {
       killChild()
       conn.close()
       rmSync(workDir, { recursive: true, force: true })
       throw new Error(`failed to mount pet directory: ${(error as Error)?.message ?? String(error)}`)
+    }
+    try {
+      await conn.call('server.mount', { path: '/user-pets', target: USER_PETS_DIR })
+    } catch (error) {
+      // Non-fatal: only user-imported pets are affected; bundled pets render.
+      console.warn('[desktop-pet] failed to mount user pets directory: %s', (error as Error)?.message ?? String(error))
     }
 
     // Wire frontend events to the backend callbacks.
