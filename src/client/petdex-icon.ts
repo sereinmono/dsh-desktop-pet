@@ -1,0 +1,8 @@
+/**
+ * The official Petdex favicon (petdex.dev/favicon.ico), 32×32 PNG frame.
+ *
+ * Inlined as a data URI because the settings card runs inside the Harness
+ * web GUI, which has no static-asset channel into this plugin's package; a
+ * relative <img> src would resolve against the Harness origin and 404.
+ */
+export const PETDEX_ICON_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAACcUlEQVR4nO2WO28TQRRGtyH8BYTjtx2vx+Nd72vWGGITvBaRKCgoaCgoKCgokEgRigiBoEgRFAcUBBIULizhIhQUFOFRpKChQMKRKCiQQmOJFI5TGl00ohlnZli/q3x/4Jy5c+/MVZTjSJL3Olni7VeJ12qS8t6hU/4J9oUfYC98B+t8E8zSVzCLX8CY/wzG/A7kzn0C/ew26IV3oJ15Czi/dYjd103s1Nc1u4aVfrO4CCdJpb3per//EK8FxPsFg8Kz+TeQdRuASR0wqQGyX3bT1vOnCDVmfOFupf3RrezDuOAZ5xUg+wUgaxNUo/oBoXtyCbfSfjYpeNrcANVYg1Ru9Yn0zt0xll0EV3OrkNIedtP6gwwnQP413GTh+iNI6fchqa085gQcr7U7DfictgJJvPxNILDXmQo8excS+M4BL1D2h7M5CmfzP3gSL0Eicxs4AbuPk/cIHDk5Gz94HN0SCCz4l53N0bL3CPjA4+mbvIA1RNlld85GBI+pN3gBc4iyyxquR0AAj6nXBQLFwcsu63Y2Ing0dY0XMCSj1ivQ36ixEcEjc1dFAjvCOWfT75z3CAjgkeQVXiAneWTY9AOnd85GBA8nLvMCuuSFGzUieCh+SSBQED+vo0YED8Uu8gKa5G0fNSJ4MFrmBbLu1sEwH4tszmUnp/DZSKktEGjsTgMejJYgEC7w3zF26uvTgM9GChAIkTW+B+waptvrxOFhp3sqlEOKKGm6Ok8UTuB00KgqsiDUmFHNjfeTggdC5rZlWSekAjR0b6erM91ex1l2enJfOBu6OtPtlS6QCbzUGRgeKXZot9OGk965chxF+Qv74mIyNssNPQAAAABJRU5ErkJggg=='

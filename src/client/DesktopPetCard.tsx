@@ -16,6 +16,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { DesktopPetCardFace, ImportMessage } from './desktop-pet-controller'
 import { PET_SCALE_MAX, PET_SCALE_MIN, PET_SCALE_STEP, quantizeScale } from './desktop-pet-controller'
 import type { DesktopPetKey } from './locales'
+import { PETDEX_ICON_DATA_URI } from './petdex-icon'
 import css from './DesktopPetCard.module.css'
 
 /** Props the renderer binds for the desktop pet card. */
@@ -37,21 +38,17 @@ const IMPORT_COPY: Record<string, DesktopPetKey> = {
   'petdex-failed': 'desktopPet.importPetdexFailed',
 }
 
-/** The Petdex brand mark: a rounded blue tile with a white smiley face. */
+/** The official Petdex favicon, inlined as a data URI. */
 function PetdexIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
-      <rect x="1" y="1" width="14" height="14" rx="3.4" fill="currentColor" />
-      <circle cx="5.3" cy="6" r="1.2" fill="#fff" />
-      <circle cx="10.7" cy="6" r="1.2" fill="#fff" />
-      <path
-        d="M4.1 9.7c1.2 1.8 6.6 1.8 7.8 0"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
+    <img
+      src={PETDEX_ICON_DATA_URI}
+      alt=""
+      className={className}
+      width={16}
+      height={16}
+      draggable={false}
+    />
   )
 }
 
