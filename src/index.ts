@@ -76,6 +76,12 @@ export function apply(ctx: Context, config: PetConfig): void {
     let reconcileSeq = 0
     // Serializes import requests so a slow import never re-enters itself.
     let importSeq = 0
+    // A committed petAction request may be re-delivered by the settings
+    // service on unrelated changes while the import is still running; running
+    // it twice would collide (duplicate-id) and the second write-back would
+    // supersede the first. Only the first delivery of a requestId runs.
+    const handledImportRequests = new Set<string>()
+    let activeImportRequest: string | null = null
     // Resolved lazily from the optional `directoryPicker` service.
     let directoryPicker: { capability(): { kind: string; pick?(signal: AbortSignal): Promise<string | null> } } | undefined
 
@@ -246,6 +252,21 @@ export function apply(ctx: Context, config: PetConfig): void {
 
     /** Execute a one-shot import request from the settings card. */
     async function handlePetAction(action: PetAction): Promise<void> {
+      // Idempotency guard: the settings service can re-deliver the same
+      // committed request (e.g. on unrelated settings changes) while the
+      // import is still in flight. Running it twice would collide on the
+      // destination directory and the second write-back would supersede the
+      // first, silently dropping the imported pet from the catalog.
+      if (handledImportRequests.has(action.requestId)) return
+      if (activeImportRequest !== null && activeImportRequest !== action.requestId) {
+        // A different request is already running (the client serializes via
+        // its `importing` state, so this is defensive only). Drop the
+        // newcomer; the client will surface its own timeout.
+        return
+      }
+      handledImportRequests.add(action.requestId)
+      activeImportRequest = action.requestId
+
       const seq = ++importSeq
       const requestId = action.requestId
       const writeResult = async (patch: Partial<PetSettingsSnapshot>) => {
@@ -253,7 +274,9 @@ export function apply(ctx: Context, config: PetConfig): void {
         try {
           await settingsHandle?.update(patch)
         } catch (error) {
-          log.warn('import result write failed: %s', (error as Error)?.message ?? String(error))
+          // The result channel is the only way the card learns the outcome;
+          // a failed write leaves the request dangling, so log loudly.
+          log.warn('import result write failed: %s (patch keys: %s)', (error as Error)?.message ?? String(error), Object.keys(patch).join(','))
         }
       }
       // Report an import outcome; on failure keep the request cleared so it
@@ -308,8 +331,10 @@ export function apply(ctx: Context, config: PetConfig): void {
         // A synchronous failure inside the import (e.g. the Petdex CLI could
         // not be spawned) must become a visible outcome, never an unhandled
         // rejection that takes down the harness.
-        log.warn('pet import failed: %s', (error as Error)?.message ?? String(error))
+        log.warn('pet import failed (request %s): %s', requestId, (error as Error)?.message ?? String(error))
         await fail('petdex-failed', (error as Error)?.message)
+      } finally {
+        if (activeImportRequest === requestId) activeImportRequest = null
       }
     }
 

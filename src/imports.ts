@@ -24,6 +24,7 @@ export type SpawnFn = (
 /** Machine-readable import outcomes; the client maps these to UI copy. */
 export type ImportCode =
   | 'ok'
+  | 'already-present'
   | 'source-not-directory'
   | 'no-pet-json'
   | 'invalid-manifest'
@@ -107,7 +108,20 @@ function assertSpritesheet(directory: string, spritesheetPath: string): void {
 /** Copy only the pet files (manifest + sprite sheet) into a target root. */
 function copyIntoPetsRoot(id: string, source: string, spritesheetPath: string, targetRoot: string): void {
   const dest = join(targetRoot, id)
-  if (existsSync(dest)) throw importFailure('duplicate-id')
+  if (existsSync(dest)) {
+    // A directory may already exist from an earlier import whose catalog
+    // write-back was lost (e.g. a settings write race). If it is a valid pet,
+    // adopt it instead of failing — the caller re-publishes the catalog so the
+    // pet shows up in the list. Only a broken existing directory is refused.
+    let valid = false
+    try {
+      const existing = readManifest(dest)
+      assertSpritesheet(dest, existing.spritesheetPath)
+      valid = true
+    } catch { /* invalid existing directory */ }
+    if (valid) throw importFailure('already-present')
+    throw importFailure('duplicate-id')
+  }
   try {
     mkdirSync(dest, { recursive: true })
     copyFileSync(join(source, 'pet.json'), join(dest, 'pet.json'))
@@ -153,6 +167,11 @@ export function importPetFromDirectory(sourceDir: string, targetRoot: string = U
     copyIntoPetsRoot(manifest.id, sourceDir, manifest.spritesheetPath, targetRoot)
   } catch (error) {
     const failure = error as { code: ImportCode; detail?: string }
+    if (failure.code === 'already-present') {
+      // The pet is already installed (and valid): not an error — the caller
+      // re-publishes the catalog so the pet shows up in the picker.
+      return { ok: true, code: 'already-present', petId: manifest.id, displayName: manifest.displayName }
+    }
     return { ok: false, code: failure.code, detail: failure.detail }
   }
 

@@ -30,6 +30,7 @@ const ADD_PET_DOC_URL = 'https://github.com/sereinmono/dsh-desktop-pet/blob/mast
 /** Import outcome code → localized copy key (unknown codes fall back to generic). */
 const IMPORT_COPY: Record<string, DesktopPetKey> = {
   'ok': 'desktopPet.importOk',
+  'already-present': 'desktopPet.importAlreadyPresent',
   'duplicate-id': 'desktopPet.importConflict',
   'no-folder-picker': 'desktopPet.importNoFolderPicker',
   'petdex-not-found': 'desktopPet.importPetdexNotFound',

@@ -92,9 +92,26 @@ describe('importPetFromDirectory', () => {
     rmSync(source, { recursive: true, force: true })
   })
 
-  it('rejects a duplicate pet id', () => {
+  it('adopts an existing valid pet as already-present (catalog re-publish)', () => {
     const source = makeSourceDir('cat')
     const target = makeTarget()
+    // A prior import left a VALID pet directory behind (e.g. its catalog
+    // write-back was lost); re-importing should succeed and re-publish it.
+    mkdirSync(join(target, 'cat'))
+    writeFileSync(join(target, 'cat', 'pet.json'), JSON.stringify({ id: 'cat', displayName: 'Cat', spritesheetPath: 'sheet.webp' }))
+    writeFileSync(join(target, 'cat', 'sheet.webp'), Buffer.from([9, 9, 9, 9]))
+    const result = importPetFromDirectory(join(source, 'cat'), target)
+    expect(result.ok).toBe(true)
+    expect(result.code).toBe('already-present')
+    expect(result.petId).toBe('cat')
+    rmSync(source, { recursive: true, force: true })
+    rmSync(target, { recursive: true, force: true })
+  })
+
+  it('rejects an existing broken directory as duplicate-id', () => {
+    const source = makeSourceDir('cat')
+    const target = makeTarget()
+    // The existing directory is present but NOT a valid pet (no spritesheet).
     mkdirSync(join(target, 'cat'))
     writeFileSync(join(target, 'cat', 'pet.json'), JSON.stringify({ id: 'cat' }))
     const result = importPetFromDirectory(join(source, 'cat'), target)
