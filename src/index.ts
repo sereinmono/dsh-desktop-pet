@@ -22,7 +22,7 @@ import type { NormalizedEvent, SemanticState } from './core/types'
 import { importPetFromDirectory, importPetFromPetdex } from './imports'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
 import { loadPosition, savePosition } from './persistence'
-import { resolvePetManifest, scanPets } from './pets'
+import { resolvePetManifest, sameCatalog, scanPets } from './pets'
 import { installPetSettings, type PetSettingsHandle, type PetSettingsRegistrar, type PetSettingsSnapshot } from './settings'
 import { shouldBeVisible } from './visibility'
 import { webUiUrl } from './webui'
@@ -241,6 +241,13 @@ export function apply(ctx: Context, config: PetConfig): void {
         // the settings round-trip resolved (a stale user layer must not
         // shadow the directory facts). Everything else follows settings.
         currentSettings = { ...settings, availablePets: catalog }
+        // Reconcile a stale catalog in the persisted user layer: a pet whose
+        // directory was removed would otherwise keep showing in the picker.
+        if (!sameCatalog(settings.availablePets, catalog)) {
+          void Promise.resolve(settingsHandle?.update({ availablePets: catalog })).catch((error) => {
+            log.warn('catalog write-back failed: %s', (error as Error)?.message ?? String(error))
+          })
+        }
         if (settings.petAction) void handlePetAction(settings.petAction)
         void reconcile(currentSettings).catch((error) => {
           log.warn('settings reconcile failed: %s', (error as Error)?.message ?? String(error))

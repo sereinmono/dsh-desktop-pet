@@ -130,3 +130,17 @@ export async function resolvePetManifest(petId: string): Promise<PetManifestRef>
 export function userPetsDir(): string {
   return USER_PETS_DIR
 }
+
+/**
+ * Whether a settings-side pet list matches a disk scan (same ids, same order).
+ * Used to detect a stale `availablePets` user layer (e.g. a pet whose
+ * directory was removed) so the host can write the scan back.
+ */
+export function sameCatalog(a: readonly PetCatalogEntry[] | undefined, b: readonly PetCatalogEntry[]): boolean {
+  if (!Array.isArray(a)) return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false
+  }
+  return true
+}
