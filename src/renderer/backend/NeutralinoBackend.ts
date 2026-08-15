@@ -222,7 +222,11 @@ export class NeutralinoBackend implements WindowBackend {
     config.modes.window.alwaysOnTop = options.alwaysOnTop
     writeFileSync(join(workDir, 'neutralino.config.json'), JSON.stringify(config, null, 2))
 
-    const child: ChildProcess = spawn(binary, [`--path=${workDir}`], {
+    // Run in directory resource mode: the runtime would otherwise try to open
+    // `resources.neu`, log a `NE_RS_TREEGER` error, and only then fall back to
+    // serving the directory. The frontend bundle is served straight from disk,
+    // so opting into directory mode skips that probe entirely (and the noise).
+    const child: ChildProcess = spawn(binary, [`--path=${workDir}`, '--res-mode=directory'], {
       cwd: workDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
