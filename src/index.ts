@@ -269,7 +269,12 @@ export function apply(ctx: Context, config: PetConfig): void {
           })
         }
         if (settings.petAction) void handlePetAction(settings.petAction)
-        void reconcile(currentSettings).catch((error) => {
+        // Serialize reconciles through the settings watcher: the client saves
+        // fields one at a time, each firing a separate onApply, so returning
+        // this promise (instead of fire-and-forget) makes the settings service
+        // await one rebuild before starting the next. Without it, overlapping
+        // recreates leave the previous window frozen on screen.
+        return reconcile(currentSettings).catch((error) => {
           log.warn('settings reconcile failed: %s', (error as Error)?.message ?? String(error))
         })
       })
