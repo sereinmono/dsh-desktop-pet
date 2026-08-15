@@ -286,3 +286,76 @@ export function listPetdexPets(): string[] {
   }
   return slugs
 }
+
+export interface RestorePetOptions {
+  /** Destination pets root (defaults to the user pets dir). */
+  targetRoot?: string
+  /** Source roots searched for an existing copy (defaults to Petdex install dirs). */
+  sourceRoots?: string[]
+}
+
+export interface RestorePetResult {
+  restored: boolean
+  /** Why no restore happened when `restored` is false. */
+  reason?: 'already-valid' | 'no-source' | 'copy-failed'
+}
+
+/** Whether `directory` holds a valid pet (manifest + sprite sheet). */
+function isValidPet(directory: string): boolean {
+  try {
+    const manifest = readManifest(directory)
+    assertSpritesheet(directory, manifest.spritesheetPath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Restore a missing or broken pet from a source copy (e.g. the Petdex
+ * download directory) after the user pets directory lost it. Used at startup
+ * so a `petId` that points at an absent directory self-heals instead of
+ * silently falling back to the bundled pet.
+ *
+ * A target that exists but is broken (partial copy) is removed first; a valid
+ * target is left untouched.
+ */
+export function restorePetFromSource(
+  petId: string,
+  options: RestorePetOptions = {},
+): RestorePetResult {
+  const targetRoot = options.targetRoot ?? USER_PETS_DIR
+  const target = join(targetRoot, petId)
+  if (isValidPet(target)) return { restored: false, reason: 'already-valid' }
+
+  const roots = options.sourceRoots ?? [petdexInstallDir(), codexInstallDir()]
+  let source: string | undefined
+  for (const root of roots) {
+    const candidate = join(root, petId)
+    if (existsSync(join(candidate, 'pet.json'))) {
+      source = candidate
+      break
+    }
+  }
+  if (!source) return { restored: false, reason: 'no-source' }
+
+  let manifest
+  try {
+    manifest = readManifest(source)
+    assertSpritesheet(source, manifest.spritesheetPath)
+  } catch {
+    return { restored: false, reason: 'copy-failed' }
+  }
+  // The target is missing or broken; clear it so the copy starts clean.
+  try {
+    if (existsSync(target)) rmSync(target, { recursive: true, force: true })
+  } catch {
+    return { restored: false, reason: 'copy-failed' }
+  }
+  try {
+    copyIntoPetsRoot(petId, source, manifest.spritesheetPath, targetRoot)
+    return { restored: true }
+  } catch {
+    return { restored: false, reason: 'copy-failed' }
+  }
+}

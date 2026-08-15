@@ -19,12 +19,13 @@ import { registerPetCommand } from './commands'
 import { Config, type PetAction, type PetConfig } from './config'
 import { PetStateMachine } from './core/PetStateMachine'
 import type { NormalizedEvent, SemanticState } from './core/types'
-import { importPetFromDirectory, importPetFromPetdex } from './imports'
+import { importPetFromDirectory, importPetFromPetdex, restorePetFromSource } from './imports'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
 import { loadPosition, savePosition } from './persistence'
-import { resolvePetManifest, scanPets } from './pets'
+import { resolvePetManifest, sameCatalog, scanPets } from './pets'
 import { installPetSettings, type PetSettingsHandle, type PetSettingsRegistrar, type PetSettingsSnapshot } from './settings'
 import { shouldBeVisible } from './visibility'
+import { webUiUrl } from './webui'
 import { PetWindow } from './renderer/PetWindow'
 import { selectBackend } from './renderer/backend/selectBackend'
 
@@ -84,6 +85,11 @@ export function apply(ctx: Context, config: PetConfig): void {
     let activeImportRequest: string | null = null
     // Resolved lazily from the optional `directoryPicker` service.
     let directoryPicker: { capability(): { kind: string; pick?(signal: AbortSignal): Promise<string | null> } } | undefined
+    // WebUI URL resolved from the optional `webServer` service (web profiles
+    // only); undefined disables the click-to-open action.
+    let webuiUrl: string | undefined
+    // Startup self-heal runs once; a second settings callback must not repeat it.
+    let selfHealChecked = false
 
     /** Whether the window should be visible given the current state + settings. */
     function shouldBeVisibleFor(state: SemanticState | undefined): boolean {
@@ -166,6 +172,7 @@ export function apply(ctx: Context, config: PetConfig): void {
               applyVisibility(machine?.state)
             }
           },
+          resolveWebuiUrl: () => webuiUrl,
         })
         await window.open()
         if (disposed) {
@@ -236,8 +243,38 @@ export function apply(ctx: Context, config: PetConfig): void {
         // the settings round-trip resolved (a stale user layer must not
         // shadow the directory facts). Everything else follows settings.
         currentSettings = { ...settings, availablePets: catalog }
+        // Self-heal once at startup: if `petId` points at a pet whose user
+        // directory is missing (e.g. lost to an external clean-up), restore it
+        // from the Petdex source before the renderer resolves it. Logs both
+        // the heal and the missing-with-no-source case for diagnosis.
+        if (!selfHealChecked) {
+          selfHealChecked = true
+          const targetId = typeof settings.petId === 'string' && settings.petId.length > 0 ? settings.petId : undefined
+          if (targetId && !catalog.some(entry => entry.id === targetId)) {
+            const heal = restorePetFromSource(targetId)
+            if (heal.restored) {
+              log.warn('pet "%s" was missing; restored from source', targetId)
+              catalog = scanPets()
+            } else {
+              log.warn('pet "%s" is missing and could not be restored (%s)', targetId, heal.reason ?? 'unknown')
+            }
+          }
+          log.info('pets on disk: %s', catalog.map(p => p.id).join(', ') || '(none)')
+        }
+        // Reconcile a stale catalog in the persisted user layer: a pet whose
+        // directory was removed would otherwise keep showing in the picker.
+        if (!sameCatalog(settings.availablePets, catalog)) {
+          void Promise.resolve(settingsHandle?.update({ availablePets: catalog })).catch((error) => {
+            log.warn('catalog write-back failed: %s', (error as Error)?.message ?? String(error))
+          })
+        }
         if (settings.petAction) void handlePetAction(settings.petAction)
-        void reconcile(currentSettings).catch((error) => {
+        // Serialize reconciles through the settings watcher: the client saves
+        // fields one at a time, each firing a separate onApply, so returning
+        // this promise (instead of fire-and-forget) makes the settings service
+        // await one rebuild before starting the next. Without it, overlapping
+        // recreates leave the previous window frozen on screen.
+        return reconcile(currentSettings).catch((error) => {
           log.warn('settings reconcile failed: %s', (error as Error)?.message ?? String(error))
         })
       })
@@ -248,6 +285,14 @@ export function apply(ctx: Context, config: PetConfig): void {
     // client is told to fall back to a manual copy.
     petCtx.inject(['directoryPicker'], (sctx) => {
       directoryPicker = sctx.get('directoryPicker') as typeof directoryPicker
+    })
+
+    // Optional web server service (web profiles only): clicking the pet opens
+    // the WebUI in the default browser. Absent in non-web profiles — the
+    // click-to-open action is then silently disabled.
+    petCtx.inject(['webServer'], (sctx) => {
+      const server = sctx.get('webServer') as { port?: number } | undefined
+      webuiUrl = webUiUrl(server?.port)
     })
 
     /** Execute a one-shot import request from the settings card. */

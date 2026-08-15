@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { scanPets, scanPetsRoots, resolvePetManifest } from '../src/pets'
+import { scanPets, scanPetsRoots, resolvePetManifest, sameCatalog } from '../src/pets'
 
 function makePetDir(id: string, displayName?: string, manifestId = id) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-pets-'))
@@ -65,6 +65,26 @@ describe('scanPetsRoots multi-root', () => {
     expect(scanPetsRoots([root])).toEqual([])
     // The fallback lives on the scanPets wrapper, not the raw multi-root merge.
     expect(scanPets(root)).toEqual([{ id: 'text', displayName: 'Text (test)' }])
+  })
+})
+
+describe('sameCatalog', () => {
+  const scan: Array<{ id: string; displayName: string }> = [
+    { id: 'boxcat', displayName: 'Boxcat' },
+    { id: 'text', displayName: 'Text (test)' },
+  ]
+
+  it('matches an identical list', () => {
+    expect(sameCatalog(scan, scan)).toBe(true)
+  })
+
+  it('flags a list containing a removed pet', () => {
+    const stale = [...scan, { id: 'ghost', displayName: 'Ghost' }]
+    expect(sameCatalog(stale, scan)).toBe(false)
+  })
+
+  it('flags a missing/undefined list', () => {
+    expect(sameCatalog(undefined, scan)).toBe(false)
   })
 })
 

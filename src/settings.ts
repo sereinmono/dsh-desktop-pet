@@ -55,7 +55,7 @@ export interface PetSettingsHandle {
 export function installPetSettings(
   registrar: PetSettingsRegistrar | undefined,
   base: PetSettingsSnapshot,
-  onApply: (settings: PetSettingsSnapshot) => void,
+  onApply: (settings: PetSettingsSnapshot) => void | Promise<void>,
 ): PetSettingsHandle {
   if (!registrar) {
     onApply(base)

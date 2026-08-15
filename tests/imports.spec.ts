@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { importPetFromDirectory, importPetFromPetdex, type SpawnFn } from '../src/imports'
+import { importPetFromDirectory, importPetFromPetdex, restorePetFromSource, type SpawnFn } from '../src/imports'
 
 /** A fake ChildProcess that reports a single exit code. */
 function fakeChild(exitCode: number): SpawnFn {
@@ -145,5 +145,55 @@ describe('importPetFromPetdex', () => {
     const result = await importPetFromPetdex('ghost', makeTarget(), fakeChild(0))
     expect(result.ok).toBe(false)
     expect(result.code).toBe('petdex-not-found')
+  })
+})
+
+describe('restorePetFromSource', () => {
+  it('restores a missing pet from the source root', () => {
+    const source = makeSourceDir('cat')
+    const target = makeTarget()
+    // Pet id is `cat`; the source root contains the cat directory directly.
+    const sourceRoot = source
+    const result = restorePetFromSource('cat', { targetRoot: target, sourceRoots: [sourceRoot] })
+    expect(result.restored).toBe(true)
+    expect(existsSync(join(target, 'cat', 'pet.json'))).toBe(true)
+    expect(existsSync(join(target, 'cat', 'sheet.webp'))).toBe(true)
+    rmSync(source, { recursive: true, force: true })
+    rmSync(target, { recursive: true, force: true })
+  })
+
+  it('replaces a broken target directory with the source copy', () => {
+    const source = makeSourceDir('cat')
+    const target = makeTarget()
+    // A partial/broken copy exists in the target (missing spritesheet).
+    mkdirSync(join(target, 'cat'))
+    writeFileSync(join(target, 'cat', 'pet.json'), JSON.stringify({ id: 'cat' }))
+    const result = restorePetFromSource('cat', { targetRoot: target, sourceRoots: [source] })
+    expect(result.restored).toBe(true)
+    expect(existsSync(join(target, 'cat', 'sheet.webp'))).toBe(true)
+    rmSync(source, { recursive: true, force: true })
+    rmSync(target, { recursive: true, force: true })
+  })
+
+  it('leaves a valid target untouched', () => {
+    const source = makeSourceDir('cat')
+    const target = makeTarget()
+    mkdirSync(join(target, 'cat'))
+    writeFileSync(join(target, 'cat', 'pet.json'), JSON.stringify({ id: 'cat', displayName: 'Custom', spritesheetPath: 'sheet.webp' }))
+    writeFileSync(join(target, 'cat', 'sheet.webp'), Buffer.from([7, 7, 7, 7]))
+    const result = restorePetFromSource('cat', { targetRoot: target, sourceRoots: [source] })
+    expect(result.restored).toBe(false)
+    expect(result.reason).toBe('already-valid')
+    expect(readFileSync(join(target, 'cat', 'pet.json'), 'utf8')).toContain('Custom')
+    rmSync(source, { recursive: true, force: true })
+    rmSync(target, { recursive: true, force: true })
+  })
+
+  it('reports no-source when the pet exists nowhere', () => {
+    const target = makeTarget()
+    const result = restorePetFromSource('ghost', { targetRoot: target, sourceRoots: [makeTarget()] })
+    expect(result.restored).toBe(false)
+    expect(result.reason).toBe('no-source')
+    rmSync(target, { recursive: true, force: true })
   })
 })

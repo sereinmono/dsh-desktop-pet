@@ -238,17 +238,15 @@ export class NeutralinoBackend implements WindowBackend {
 
     const killChild = (): void => {
       if (childExited || child.pid === undefined) return
-      try { child.kill() } catch { /* already gone */ }
       if (process.platform === 'win32') {
-        // Windows GUI processes can survive SIGTERM; force-kill shortly after
-        // if the process is still around (teardown path only).
-        const pid = child.pid
-        setTimeout(() => {
-          if (!childExited) {
-            try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }) } catch { /* already gone */ }
-          }
-        }, 500).unref?.()
+        // Kill the whole process tree while the parent is still alive.
+        // `child.kill()` (TerminateProcess) would orphan the WebView2 child
+        // processes (which render the window) and leave the old pet's frozen
+        // window on screen; taskkill /F /T kills parent + children atomically.
+        try { execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore' }) } catch { /* already gone */ }
+        return
       }
+      try { child.kill() } catch { /* already gone */ }
     }
 
     let conn: NeutralinoConnection | undefined
@@ -301,6 +299,13 @@ export class NeutralinoBackend implements WindowBackend {
       if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) options.onDrag?.(pos.x!, pos.y!)
     })
     const offClose = conn.on('pet.close', () => options.onClose?.())
+    // A click (press without drag) asks the host to open the WebUI in the
+    // default browser. os.open routes to ShellExecute / xdg-open / open.
+    const offOpenWebui = conn.on('pet.openWebui', () => {
+      const url = options.resolveWebuiUrl?.()
+      if (!url) return
+      void conn!.call('os.open', { url }).catch(() => {})
+    })
 
     // Handshake: wait for the frontend to register listeners, then push the
     // initial pet, then wait for the sprite atlas to load.
@@ -353,7 +358,7 @@ export class NeutralinoBackend implements WindowBackend {
       destroy: () => {
         if (destroyed) return
         destroyed = true
-        offHover(); offUnhover(); offDragMove(); offDragEnd(); offDrag(); offClose()
+        offHover(); offUnhover(); offDragMove(); offDragEnd(); offDrag(); offClose(); offOpenWebui()
         conn!.close()
         killChild()
         rmSync(workDir, { recursive: true, force: true })

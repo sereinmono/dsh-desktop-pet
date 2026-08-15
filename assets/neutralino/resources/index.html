@@ -181,7 +181,12 @@
     moveSeq = 0
     if (cancelled) return
     Neutralino.events.broadcast('pet.dragEnd', {})
-    if (moved) Neutralino.events.broadcast('pet.drag', { x: winPos.x, y: winPos.y })
+    if (moved) {
+      Neutralino.events.broadcast('pet.drag', { x: winPos.x, y: winPos.y })
+    } else {
+      // A press that never moved is a click: ask the host to open the WebUI.
+      Neutralino.events.broadcast('pet.openWebui', {})
+    }
   }
 
   canvas.addEventListener('pointerup', (e) => {
