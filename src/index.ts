@@ -23,6 +23,7 @@ import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './
 import { loadPosition, savePosition } from './persistence'
 import { resolvePetManifest, scanPets } from './pets'
 import { installPetSettings, type PetSettingsHandle, type PetSettingsRegistrar, type PetSettingsSnapshot } from './settings'
+import { shouldBeVisible } from './visibility'
 import { PetWindow } from './renderer/PetWindow'
 import { selectBackend } from './renderer/backend/selectBackend'
 
@@ -74,19 +75,12 @@ export function apply(ctx: Context, config: PetConfig): void {
     let reconcileSeq = 0
 
     /** Whether the window should be visible given the current state + settings. */
-    function shouldBeVisible(state: SemanticState | undefined): boolean {
-      if (!currentSettings.enabled) return false
-      // Debug override keeps the pet visible so `/pet <state>` is inspectable.
-      if (debugState !== undefined) return true
-      // Auto-hide only once the machine reaches the definitively-idle sleep
-      // state (a period of no activity), never during transient IDLE between
-      // tool calls inside an active turn.
-      if (currentSettings.hideWhenIdle && state === 'SLEEPING') return false
-      return true
+    function shouldBeVisibleFor(state: SemanticState | undefined): boolean {
+      return shouldBeVisible(state, currentSettings.enabled, currentSettings.hideWhenIdle, debugState)
     }
 
     function applyVisibility(state: SemanticState | undefined): void {
-      window?.setVisible(shouldBeVisible(state))
+      window?.setVisible(shouldBeVisibleFor(state))
     }
 
     /**
