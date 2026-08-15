@@ -61,10 +61,14 @@
   let moveSeq = 0
 
   function applyCanvasSize() {
+    // The window is created in physical pixels; CSS pixels = physical / dpr.
+    // Keep the canvas buffer at the physical size (fills the window exactly,
+    // crispest), and scale only the CSS size down.
+    const css = cssSizeFor(layout, window.devicePixelRatio)
     canvas.width = layout.width
     canvas.height = layout.height
-    canvas.style.width = layout.width + 'px'
-    canvas.style.height = layout.height + 'px'
+    canvas.style.width = css.width + 'px'
+    canvas.style.height = css.height + 'px'
     ctx.imageSmoothingEnabled = false
   }
 

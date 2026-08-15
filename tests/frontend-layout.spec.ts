@@ -15,6 +15,7 @@ const renderSource = readFileSync(
 
 function loadRenderer(): {
   layoutForScale(scale: number): { width: number; height: number; petX: number; petY: number; petW: number; petH: number }
+  cssSizeFor(layout: { width: number; height: number }, dpr: number): { width: number; height: number }
   clampDragTarget(x: number, y: number, layout: unknown, sw: number, sh: number): { x: number; y: number }
   sourceRect(d: { sx?: number; sy?: number }): { sx: number; sy: number; sw: number; sh: number }
 } {
@@ -46,6 +47,18 @@ describe('frontend layout (pet-render.js)', () => {
     const clamped = clampDragTarget(99999, 99999, layout, 1920, 1080)
     expect(clamped.x).toBe(1920 - 192)
     expect(clamped.y).toBe(1080 - 208)
+  })
+
+  it('scales the CSS size down by the device pixel ratio', () => {
+    const { layoutForScale, cssSizeFor } = loadRenderer()
+    const layout = layoutForScale(1)
+    expect(cssSizeFor(layout, 1)).toEqual({ width: layout.width, height: layout.height })
+    // 150% DPI: CSS size is 2/3 of the physical size; the buffer stays physical.
+    expect(cssSizeFor(layout, 1.5).width).toBeCloseTo(layout.width / 1.5, 5)
+    expect(cssSizeFor(layout, 1.5).height).toBeCloseTo(layout.height / 1.5, 5)
+    // A missing/invalid DPR must fall back to identity, not divide by zero.
+    expect(cssSizeFor(layout, 0)).toEqual({ width: layout.width, height: layout.height })
+    expect(cssSizeFor(layout, NaN)).toEqual({ width: layout.width, height: layout.height })
   })
 
   it('defaults a malformed directive to the idle cell', () => {

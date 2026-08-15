@@ -48,6 +48,22 @@ function clampDragTarget(x, y, layout, screenW, screenH) {
 }
 
 /**
+ * CSS display size for a layout under a device pixel ratio.
+ *
+ * The host creates the window in physical pixels, and the webview maps them to
+ * CSS pixels by dividing by `devicePixelRatio` (e.g. 150% scaling halves the
+ * logical size). The canvas pixel buffer must stay at the physical size so it
+ * fills the window exactly; only its CSS size is scaled down.
+ */
+function cssSizeFor(layout, dpr) {
+  const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1
+  return {
+    width: layout.width / ratio,
+    height: layout.height / ratio,
+  }
+}
+
+/**
  * Derive the atlas source rectangle for a frame directive sent by the host.
  * The host owns the sprite contract; directives carry (sx, sy) directly, so
  * this only validates and falls back to the idle cell on malformed input.
