@@ -18,7 +18,7 @@ import { USER_PETS_DIR } from './paths'
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { cwd: string; stdio: ['ignore', 'pipe', 'pipe'] },
+  options: { cwd: string; shell?: boolean; stdio: ['ignore', 'pipe', 'pipe'] },
 ) => ChildProcess
 
 /** Machine-readable import outcomes; the client maps these to UI copy. */
@@ -188,10 +188,22 @@ export function importPetFromPetdex(
 
   return new Promise((resolve) => {
     const isWindows = process.platform === 'win32'
-    const child = spawnFn(isWindows ? 'npx.cmd' : 'npx', ['--yes', 'petdex', 'install', trimmed], {
-      cwd: tmpdir(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    let child: ChildProcess
+    try {
+      // On Windows, `.cmd` shims cannot be spawned directly — Node throws
+      // EINVAL unless `shell: true` (which routes through cmd.exe). The args
+      // array is still quoted by Node, so the slug cannot inject shell syntax.
+      child = spawnFn(isWindows ? 'npx.cmd' : 'npx', ['--yes', 'petdex', 'install', trimmed], {
+        cwd: tmpdir(),
+        shell: isWindows,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      // A synchronous spawn failure (e.g. EINVAL on an unusual platform) must
+      // surface as a failure result, never as a thrown/rejected import.
+      resolve({ ok: false, code: 'petdex-failed', detail: (error as Error)?.message })
+      return
+    }
     let stderr = ''
     let timedOut = false
     child.stdout?.on('data', () => { /* CLI progress; diagnostic only */ })

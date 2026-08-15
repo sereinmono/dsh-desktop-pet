@@ -256,53 +256,60 @@ export function apply(ctx: Context, config: PetConfig): void {
           log.warn('import result write failed: %s', (error as Error)?.message ?? String(error))
         }
       }
-
-      let result: Awaited<ReturnType<typeof importPetFromDirectory>>
-      if (action.kind === 'importFolder') {
-        const capability = directoryPicker?.capability()
-        if (!capability || capability.kind !== 'native' || !capability.pick) {
-          await writeResult({
-            petAction: null,
-            importResult: { ok: false, code: 'no-folder-picker', requestId, at: Date.now() },
-          })
-          return
-        }
-        let chosen: string | null
-        try {
-          chosen = await capability.pick(new AbortController().signal)
-        } catch (error) {
-          await writeResult({
-            petAction: null,
-            importResult: { ok: false, code: 'copy-failed', requestId, at: Date.now(), detail: (error as Error)?.message },
-          })
-          return
-        }
-        if (!chosen) {
-          // User cancelled the chooser; clear the request without an outcome.
-          await writeResult({ petAction: null })
-          return
-        }
-        result = importPetFromDirectory(chosen)
-      } else {
-        const slug = action.payload?.slug ?? ''
-        result = await importPetFromPetdex(slug)
+      // Report an import outcome; on failure keep the request cleared so it
+      // cannot replay and the card surfaces an error row.
+      const fail = async (code: string, detail?: string) => {
+        await writeResult({
+          petAction: null,
+          importResult: { ok: false, code, requestId, at: Date.now(), detail },
+        })
       }
 
-      if (result.ok && result.petId) {
-        // The catalog is a scan-time fact: re-scan so the new pet appears in
-        // the picker, then switch to it so the user sees the result.
-        catalog = scanPets()
-        await writeResult({
-          petAction: null,
-          availablePets: catalog,
-          petId: result.petId,
-          importResult: { ok: true, code: 'ok', requestId, petId: result.petId, at: Date.now() },
-        })
-      } else {
-        await writeResult({
-          petAction: null,
-          importResult: { ok: false, code: result.code, requestId, at: Date.now() },
-        })
+      try {
+        let result: Awaited<ReturnType<typeof importPetFromDirectory>>
+        if (action.kind === 'importFolder') {
+          const capability = directoryPicker?.capability()
+          if (!capability || capability.kind !== 'native' || !capability.pick) {
+            await fail('no-folder-picker')
+            return
+          }
+          let chosen: string | null
+          try {
+            chosen = await capability.pick(new AbortController().signal)
+          } catch (error) {
+            await fail('copy-failed', (error as Error)?.message)
+            return
+          }
+          if (!chosen) {
+            // User cancelled the chooser; clear the request without an outcome.
+            await writeResult({ petAction: null })
+            return
+          }
+          result = importPetFromDirectory(chosen)
+        } else {
+          const slug = action.payload?.slug ?? ''
+          result = await importPetFromPetdex(slug)
+        }
+
+        if (result.ok && result.petId) {
+          // The catalog is a scan-time fact: re-scan so the new pet appears in
+          // the picker, then switch to it so the user sees the result.
+          catalog = scanPets()
+          await writeResult({
+            petAction: null,
+            availablePets: catalog,
+            petId: result.petId,
+            importResult: { ok: true, code: 'ok', requestId, petId: result.petId, at: Date.now() },
+          })
+        } else {
+          await fail(result.code)
+        }
+      } catch (error) {
+        // A synchronous failure inside the import (e.g. the Petdex CLI could
+        // not be spawned) must become a visible outcome, never an unhandled
+        // rejection that takes down the harness.
+        log.warn('pet import failed: %s', (error as Error)?.message ?? String(error))
+        await fail('petdex-failed', (error as Error)?.message)
       }
     }
 
