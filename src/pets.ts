@@ -88,13 +88,23 @@ export interface PetManifestRef {
   petId: string
   /** Manifest `spritesheetPath`, relative to the pet directory. */
   spritesheetPath: string
+  /** Which root the pet resolves from (drives the frontend asset URL). */
+  root: PetRoot
+}
+
+/** Where a pet id can live on disk. */
+export type PetRoot = 'bundled' | 'user'
+
+/** Resolve a pet id to its on-disk directory and root (user first). */
+export function petSource(petId: string): { directory: string; root: PetRoot } {
+  const userDir = join(USER_PETS_DIR, petId)
+  if (existsSync(join(userDir, 'pet.json'))) return { directory: userDir, root: 'user' }
+  return { directory: join(PETS_DIR, petId), root: 'bundled' }
 }
 
 /** The on-disk directory a pet id resolves to (user root first). */
 export function petDirectory(petId: string): string {
-  const userDir = join(USER_PETS_DIR, petId)
-  if (existsSync(join(userDir, 'pet.json'))) return userDir
-  return join(PETS_DIR, petId)
+  return petSource(petId).directory
 }
 
 /**
@@ -104,7 +114,7 @@ export function petDirectory(petId: string): string {
  * Throws if the directory or manifest is unreadable.
  */
 export async function resolvePetManifest(petId: string): Promise<PetManifestRef> {
-  const directory = petDirectory(petId)
+  const { directory, root } = petSource(petId)
   const raw = readFileSync(join(directory, 'pet.json'), 'utf8')
   const manifest = JSON.parse(raw) as Record<string, unknown>
   if (typeof manifest.id !== 'string' || manifest.id.length === 0) {
@@ -113,7 +123,7 @@ export async function resolvePetManifest(petId: string): Promise<PetManifestRef>
   if (typeof manifest.spritesheetPath !== 'string' || manifest.spritesheetPath.length === 0) {
     throw new Error(`pet.json in "${petId}" is missing a string "spritesheetPath" field`)
   }
-  return { petId, spritesheetPath: manifest.spritesheetPath }
+  return { petId, spritesheetPath: manifest.spritesheetPath, root }
 }
 
 /** The per-user imported-pets directory (used by tests). */

@@ -23,7 +23,7 @@ import { join } from 'node:path'
 
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from './WindowBackend'
 import type { FrameDirective } from '../FrameDecoder'
-import { NEUTRALINO_APP_DIR, PETS_DIR, RUNTIME_DIR } from '../../paths'
+import { NEUTRALINO_APP_DIR, PETS_DIR, RUNTIME_DIR, USER_PETS_DIR } from '../../paths'
 
 /** Frontend files copied into the per-launch working directory. */
 const FRONTEND_DIR = join(NEUTRALINO_APP_DIR, 'resources')
@@ -262,9 +262,11 @@ export class NeutralinoBackend implements WindowBackend {
       throw error
     }
 
-    // Expose the packaged pet directory to the frontend as `/pets`.
+    // Expose the pet asset roots to the frontend: bundled pets under `/pets`,
+    // user-imported pets under `/user-pets` (they live outside the package).
     try {
       await conn.call('server.mount', { path: '/pets', target: PETS_DIR })
+      await conn.call('server.mount', { path: '/user-pets', target: USER_PETS_DIR })
     } catch (error) {
       killChild()
       conn.close()
@@ -294,7 +296,7 @@ export class NeutralinoBackend implements WindowBackend {
     conn.broadcast('pet.handshakeQuery', {})
     await withTimeout(frontendReady, UI_READY_TIMEOUT_MS, 'frontend did not become ready')
 
-    const spritesheetUrl = `/pets/${options.petId}/${options.spritesheetPath}`
+    const spritesheetUrl = `${options.petRoot === 'user' ? '/user-pets' : '/pets'}/${options.petId}/${options.spritesheetPath}`
     conn.broadcast('pet.init', {
       scale: options.scale,
       spritesheetUrl,

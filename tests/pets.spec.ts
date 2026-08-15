@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { scanPets, scanPetsRoots } from '../src/pets'
+import { scanPets, scanPetsRoots, resolvePetManifest } from '../src/pets'
 
 function makePetDir(id: string, displayName?: string, manifestId = id) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-pets-'))
@@ -65,5 +65,26 @@ describe('scanPetsRoots multi-root', () => {
     expect(scanPetsRoots([root])).toEqual([])
     // The fallback lives on the scanPets wrapper, not the raw multi-root merge.
     expect(scanPets(root)).toEqual([{ id: 'text', displayName: 'Text (test)' }])
+  })
+})
+
+describe('resolvePetManifest root attribution', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+  })
+
+  it('attributes a pet in the user directory to the user root', async () => {
+    vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const { userPetsDir } = await import('../src/pets')
+    const dir = userPetsDir()
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(join(dir, 'cat'))
+    writeFileSync(join(dir, 'cat', 'pet.json'), JSON.stringify({ id: 'cat', spritesheetPath: 'sheet.webp' }))
+    // Move the real bundled pets out of the way so the stub env wins.
+    const ref = await resolvePetManifest('cat')
+    expect(ref.root).toBe('user')
+    expect(ref.petId).toBe('cat')
+    rmSync(dir, { recursive: true, force: true })
   })
 })

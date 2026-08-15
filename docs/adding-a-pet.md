@@ -5,13 +5,38 @@ English | [中文](adding-a-pet.zh.md)
 This guide explains how to add a new desktop pet to **dsh-desktop-pet**.
 
 A pet is a directory containing a manifest (`pet.json`) and a sprite sheet
-(`spritesheet.webp` or `spritesheet.png`). The plugin scans `assets/pets/` at
-startup and lists every discovered pet in the settings picker.
+(`spritesheet.webp` or `spritesheet.png`). The plugin scans two places at
+startup and lists every discovered pet in the settings picker:
 
-## Ways to add a pet
+- **User pets directory** (`~/.dsh/desktop-pet/pets/<id>/`) — where pets you
+  import from a folder or from Petdex live. This is the normal way to add a
+  pet; imported pets survive plugin upgrades because they live outside the
+  installed package.
+- **Bundled pets directory** (`assets/pets/<id>/` inside the installed
+  package) — pets shipped with the plugin itself. End users normally never
+  write here: the directory is owned by the package and is replaced on every
+  upgrade.
+
+When a pet id exists in both places, the user directory wins.
+
+## The easy way: use the settings card
+
+Open **Settings → Plugins → Plugin configuration → Desktop pet**. The card has
+two import buttons:
+
+- **Add from folder** — pick any directory on disk that already contains a
+  pet (`pet.json` + sprite sheet). The plugin validates it, copies it into the
+  user pets directory, and switches to it.
+- **Add from Petdex** — enter a Petdex slug; the plugin runs
+  `npx petdex install <slug>` (a third-party community CLI), then imports the
+  downloaded directory into the user pets directory.
+
+## Adding a pet manually
 
 Each method below has a **copy-paste prompt** for a coding agent, followed by
-**manual steps** you can follow yourself.
+**manual steps** you can follow yourself. All manual methods end with copying
+a pet directory into the **user pets directory** — not into the plugin's
+`assets/pets/`.
 
 ### 1. Using hatch-pet
 
@@ -19,7 +44,7 @@ Each method below has a **copy-paste prompt** for a coding agent, followed by
 
 ```text
 Run the hatch-pet skill to generate a pet, then copy the generated directory
-(pet.json + spritesheet.webp) into <plugin-dir>/assets/pets/<id>/ and restart
+(pet.json + spritesheet.webp) into ~/.dsh/desktop-pet/pets/<id>/ and restart
 the plugin so it appears in the settings pet picker.
 ```
 
@@ -28,7 +53,7 @@ the plugin so it appears in the settings pet picker.
 1. Run the hatch-pet skill inside Codex (or a coding agent that ships it). The
    generated directory lands in `~/.codex/pets/<name>/` and already contains
    `pet.json` + `spritesheet.webp`.
-2. Copy that directory into `<plugin-dir>/assets/pets/<id>/`.
+2. Copy that directory into `~/.dsh/desktop-pet/pets/<id>/`.
 3. Restart the plugin (restart Harness, or reload the plugin).
 4. Open **Settings → Plugins → Plugin configuration → Desktop pet** and pick the
    new pet from the dropdown.
@@ -39,14 +64,14 @@ the plugin so it appears in the settings pet picker.
 
 ```text
 Copy the existing directory <source-dir> (containing pet.json and
-spritesheet.webp) into <plugin-dir>/assets/pets/<id>/, then restart the plugin
+spritesheet.webp) into ~/.dsh/desktop-pet/pets/<id>/, then restart the plugin
 so it appears in the settings pet picker.
 ```
 
 **Manual steps:**
 
 1. Make sure `<source-dir>` contains `pet.json` and `spritesheet.webp` (or `.png`).
-2. Copy it into `<plugin-dir>/assets/pets/<id>/`. The directory name is the pet id.
+2. Copy it into `~/.dsh/desktop-pet/pets/<id>/`. The directory name is the pet id.
 3. Restart the plugin.
 4. Pick the new pet from the settings dropdown.
 
@@ -56,28 +81,29 @@ so it appears in the settings pet picker.
 
 ```text
 Run "npx petdex install <slug>" to download a community pet, then copy the
-downloaded directory into <plugin-dir>/assets/pets/<slug>/ and restart the
+downloaded directory into ~/.dsh/desktop-pet/pets/<slug>/ and restart the
 plugin so it appears in the pet picker.
 ```
 
 **Manual steps:**
 
 1. Run `npx petdex install <slug>`. Petdex is a third-party community; the pet
-   downloads into `~/.codex/pets/<slug>/`.
-2. Copy that directory into `<plugin-dir>/assets/pets/<slug>/`.
+   downloads into `~/.petdex/pets/<slug>/` (older versions used
+   `~/.codex/pets/<slug>/`).
+2. Copy that directory into `~/.dsh/desktop-pet/pets/<slug>/`.
 3. Restart the plugin.
 4. Pick the new pet from the settings dropdown.
 
 ## Pet directory structure
 
 ```text
-<plugin-dir>/assets/pets/<pet-id>/
+~/.dsh/desktop-pet/pets/<pet-id>/
 ├── pet.json          # manifest (id / displayName / description / spritesheetPath)
 └── spritesheet.webp  # sprite sheet (lossless WebP or PNG)
 ```
 
 > **Placeholders**
-> - `<plugin-dir>` — the directory of the installed `dsh-desktop-pet` package.
+> - `~/.dsh` — the per-user data directory shared with the rest of the plugin.
 > - `<pet-id>` / `<id>` / `<slug>` — the pet directory name (used as the pet id in the picker).
 > - `<source-dir>` — an existing directory that already contains the two files.
 
@@ -137,6 +163,9 @@ cell at `x = i * 192`, `y = r * 208`.
 
 ## Notes
 
+- Imported pets live in the **user pets directory** (`~/.dsh/desktop-pet/pets/`).
+  Never edit the plugin's bundled `assets/pets/` for your own pets — it is
+  replaced on every plugin upgrade and would lose your work.
 - The pet is rendered with the fixed 9-state animation format; a sprite sheet
   narrower than 1536 px or shorter than 1872 px fails to load with a clear error
   in the log.
