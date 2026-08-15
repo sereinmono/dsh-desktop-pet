@@ -52,6 +52,8 @@ export interface PetWindowOptions {
   onUnhover?: () => void
   /** Invoked when the user chooses the context menu's "close pet" item. */
   onClose?: () => void
+  /** Resolve the WebUI URL to open when the pet is clicked (undefined disables). */
+  resolveWebuiUrl?: () => string | undefined
 }
 
 const BASE_WIDTH = 192
@@ -88,6 +90,7 @@ export class PetWindow {
   private readonly onHover: (() => void) | undefined
   private readonly onUnhover: (() => void) | undefined
   private readonly onClose: (() => void) | undefined
+  private readonly resolveWebuiUrl: (() => string | undefined) | undefined
 
   private pet: PetWindowPet
   private scale: number
@@ -119,6 +122,7 @@ export class PetWindow {
     this.onHover = options.onHover
     this.onUnhover = options.onUnhover
     this.onClose = options.onClose
+    this.resolveWebuiUrl = options.resolveWebuiUrl
 
     const position = options.position ?? DEFAULT_POSITION
     this.currentX = position.x
@@ -163,6 +167,7 @@ export class PetWindow {
       onClose: () => {
         this.onClose?.()
       },
+      resolveWebuiUrl: () => this.resolveWebuiUrl?.(),
     }
     this.handle = await this.backend.create(opts)
 

@@ -39,6 +39,12 @@ export interface WindowBackendOptions {
   onUnhover?: () => void
   /** Invoked when the user chooses the context menu's "close pet" item. */
   onClose?: () => void
+  /**
+   * Resolve the WebUI URL to open when the pet is clicked. Evaluated per click
+   * (the URL may become available after window creation); returning undefined
+   * disables the click-to-open action.
+   */
+  resolveWebuiUrl?: () => string | undefined
 }
 
 export interface WindowHandle {

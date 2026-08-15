@@ -301,6 +301,13 @@ export class NeutralinoBackend implements WindowBackend {
       if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) options.onDrag?.(pos.x!, pos.y!)
     })
     const offClose = conn.on('pet.close', () => options.onClose?.())
+    // A click (press without drag) asks the host to open the WebUI in the
+    // default browser. os.open routes to ShellExecute / xdg-open / open.
+    const offOpenWebui = conn.on('pet.openWebui', () => {
+      const url = options.resolveWebuiUrl?.()
+      if (!url) return
+      void conn!.call('os.open', { url }).catch(() => {})
+    })
 
     // Handshake: wait for the frontend to register listeners, then push the
     // initial pet, then wait for the sprite atlas to load.
@@ -353,7 +360,7 @@ export class NeutralinoBackend implements WindowBackend {
       destroy: () => {
         if (destroyed) return
         destroyed = true
-        offHover(); offUnhover(); offDragMove(); offDragEnd(); offDrag(); offClose()
+        offHover(); offUnhover(); offDragMove(); offDragEnd(); offDrag(); offClose(); offOpenWebui()
         conn!.close()
         killChild()
         rmSync(workDir, { recursive: true, force: true })

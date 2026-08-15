@@ -25,6 +25,7 @@ import { loadPosition, savePosition } from './persistence'
 import { resolvePetManifest, scanPets } from './pets'
 import { installPetSettings, type PetSettingsHandle, type PetSettingsRegistrar, type PetSettingsSnapshot } from './settings'
 import { shouldBeVisible } from './visibility'
+import { webUiUrl } from './webui'
 import { PetWindow } from './renderer/PetWindow'
 import { selectBackend } from './renderer/backend/selectBackend'
 
@@ -84,6 +85,9 @@ export function apply(ctx: Context, config: PetConfig): void {
     let activeImportRequest: string | null = null
     // Resolved lazily from the optional `directoryPicker` service.
     let directoryPicker: { capability(): { kind: string; pick?(signal: AbortSignal): Promise<string | null> } } | undefined
+    // WebUI URL resolved from the optional `webServer` service (web profiles
+    // only); undefined disables the click-to-open action.
+    let webuiUrl: string | undefined
 
     /** Whether the window should be visible given the current state + settings. */
     function shouldBeVisibleFor(state: SemanticState | undefined): boolean {
@@ -166,6 +170,7 @@ export function apply(ctx: Context, config: PetConfig): void {
               applyVisibility(machine?.state)
             }
           },
+          resolveWebuiUrl: () => webuiUrl,
         })
         await window.open()
         if (disposed) {
@@ -248,6 +253,14 @@ export function apply(ctx: Context, config: PetConfig): void {
     // client is told to fall back to a manual copy.
     petCtx.inject(['directoryPicker'], (sctx) => {
       directoryPicker = sctx.get('directoryPicker') as typeof directoryPicker
+    })
+
+    // Optional web server service (web profiles only): clicking the pet opens
+    // the WebUI in the default browser. Absent in non-web profiles — the
+    // click-to-open action is then silently disabled.
+    petCtx.inject(['webServer'], (sctx) => {
+      const server = sctx.get('webServer') as { port?: number } | undefined
+      webuiUrl = webUiUrl(server?.port)
     })
 
     /** Execute a one-shot import request from the settings card. */
