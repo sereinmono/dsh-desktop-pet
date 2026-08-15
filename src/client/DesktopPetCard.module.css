@@ -320,34 +320,33 @@
   outline-offset: 1px;
 }
 
-/* "How to add a pet" documentation link. */
-.docLink {
+/* "How to add a pet" link, inline with the pet field hint. */
+.petMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  padding: 4px 0 8px;
   font-size: 12px;
   line-height: 1.5;
 }
 
-.docLink a {
+.petMetaText {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.petMetaLink {
   color: var(--dsw-alias-brand-primary);
   text-decoration: none;
 }
 
-.docLink a:hover {
+.petMetaLink:hover {
   text-decoration: underline;
 }
 
 /* Pet import actions (add from folder / add from Petdex). */
-.importSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 0 10px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
-}
-
 .importActions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
@@ -355,6 +354,7 @@
   appearance: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
@@ -382,15 +382,6 @@
   outline-offset: 1px;
 }
 
-.importButtonPetdex {
-  color: var(--dsw-alias-brand-secondary, #7c5cff);
-  border-color: var(--dsw-alias-brand-secondary, #7c5cff);
-}
-
-.importButtonPetdex:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dsw-alias-brand-secondary, #7c5cff) 10%, transparent);
-}
-
 .importIcon {
   flex: none;
   width: 16px;
@@ -402,6 +393,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .petdexInput {
@@ -433,7 +425,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0;
+  margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.5;
 }

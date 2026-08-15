@@ -37,13 +37,19 @@ const IMPORT_COPY: Record<string, DesktopPetKey> = {
   'petdex-failed': 'desktopPet.importPetdexFailed',
 }
 
-/** A small purple Petdex mark (no upstream icon exists in primitives). */
+/** The Petdex brand mark: a rounded blue tile with a white smiley face. */
 function PetdexIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <rect x="1" y="1" width="14" height="14" rx="3.4" fill="currentColor" />
+      <circle cx="5.3" cy="6" r="1.2" fill="#fff" />
+      <circle cx="10.7" cy="6" r="1.2" fill="#fff" />
       <path
-        fill="currentColor"
-        d="M8 1.6c1.9 0 3.5 1.4 3.5 3.2 0 .4-.1.8-.2 1.2h.1A3.4 3.4 0 0 1 14.6 8c0 .6-.1 1.1-.4 1.6.2.5.3 1 .3 1.5a3.2 3.2 0 0 1-3.2 3.2c-.5 0-1-.1-1.4-.4-.7.3-1.5.5-2.3.5s-1.6-.2-2.3-.5c-.4.3-.9.4-1.4.4A3.2 3.2 0 0 1 .7 11.1c0-.5.1-1 .3-1.5A3.4 3.4 0 0 1 2.6 6h.1c-.1-.4-.2-.8-.2-1.2 0-1.8 1.6-3.2 3.5-3.2 1 0 1.9.4 2.6 1 .7-.6 1.6-1 2.6-1Zm-1.2 6.8c-.4-.6-1.2-.9-2-.9H4.3a1.6 1.6 0 0 0-.3 3.2c.9 0 1.6-.5 2-1.2.2-.4.5-.7.8-1.1Zm3.2 0c.3.4.6.7.8 1.1.4.7 1.1 1.2 2 1.2a1.6 1.6 0 0 0 .3-3.2h-.5c-.8 0-1.6.3-2 .9-.2.1-.4.0-.6 0Z"
+        d="M4.1 9.7c1.2 1.8 6.6 1.8 7.8 0"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.4"
+        strokeLinecap="round"
       />
     </svg>
   )
@@ -146,9 +152,12 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
               pets={state.availablePets}
               onChange={(value) => { props.edit('petId', value) }}
               onReset={() => { props.resetField('petId') }}
-            />
-
-            <div className={css.importSection}>
+              metaLink={(
+                <a className={css.petMetaLink} href={ADD_PET_DOC_URL} target="_blank" rel="noreferrer">
+                  {t('desktopPet.addPetLink')}
+                </a>
+              )}
+            >
               <div className={css.importActions}>
                 <button
                   type="button"
@@ -161,7 +170,7 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
                 </button>
                 <button
                   type="button"
-                  className={clsx(css.importButton, css.importButtonPetdex)}
+                  className={css.importButton}
                   disabled={importDisabled}
                   onClick={() => { setPetdexOpen(v => !v) }}
                 >
@@ -211,11 +220,7 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
               {state.importMessage
                 ? <ImportResultRow message={state.importMessage} onClose={props.clearImportMessage} t={t} />
                 : null}
-            </div>
-
-            <p className={css.docLink}>
-              <a href={ADD_PET_DOC_URL} target="_blank" rel="noreferrer">{t('desktopPet.addPetLink')}</a>
-            </p>
+            </PetField>
 
             <div className={css.footer}>
               {state.failed ? <p className={css.failed} role="status">{t('saveFailed')}</p> : null}
@@ -371,7 +376,7 @@ function ScaleField(props: {
   )
 }
 
-/** The pet picker dropdown. */
+/** The pet picker block: dropdown + import actions + hint/link line. */
 function PetField(props: {
   id: string
   label: string
@@ -384,9 +389,29 @@ function PetField(props: {
   pets: ReadonlyArray<{ id: string; displayName: string }>
   onChange: (value: string) => void
   onReset: () => void
+  metaLink?: React.ReactNode
+  children?: React.ReactNode
 }) {
   return (
-    <FieldChrome {...props}>
+    <div className={css.field}>
+      <div className={css.head}>
+        <label className={css.label} htmlFor={props.id}>{props.label}</label>
+        {props.overridden
+          ? (
+            <span className={css.badges}>
+              <span className={css.badge}>{props.overriddenLabel}</span>
+              <button
+                type="button"
+                className={css.reset}
+                disabled={props.disabled}
+                onClick={props.onReset}
+              >
+                {props.resetLabel}
+              </button>
+            </span>
+          )
+          : null}
+      </div>
       <select
         id={props.id}
         className={css.select}
@@ -398,6 +423,11 @@ function PetField(props: {
           <option key={pet.id} value={pet.id}>{pet.displayName}</option>
         ))}
       </select>
-    </FieldChrome>
+      {props.children}
+      <p className={css.petMeta}>
+        <span className={css.petMetaText}>{props.hint}</span>
+        {props.metaLink}
+      </p>
+    </div>
   )
 }
