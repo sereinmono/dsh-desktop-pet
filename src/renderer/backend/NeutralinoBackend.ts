@@ -240,14 +240,12 @@ export class NeutralinoBackend implements WindowBackend {
       if (childExited || child.pid === undefined) return
       try { child.kill() } catch { /* already gone */ }
       if (process.platform === 'win32') {
-        // Windows GUI processes can survive SIGTERM; force-kill shortly after
-        // if the process is still around (teardown path only).
+        // Windows GUI processes can survive SIGTERM; force-kill the process
+        // tree synchronously so the window is gone before the caller proceeds
+        // (recreate() creates a fresh window immediately after destroy, and an
+        // async kill would leave the old pet frozen on screen).
         const pid = child.pid
-        setTimeout(() => {
-          if (!childExited) {
-            try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }) } catch { /* already gone */ }
-          }
-        }, 500).unref?.()
+        try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' }) } catch { /* already gone */ }
       }
     }
 
