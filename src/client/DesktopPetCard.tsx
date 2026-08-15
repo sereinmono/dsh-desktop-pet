@@ -11,10 +11,11 @@
 
 import { useState } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, IconFolderOpen16, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DesktopPetCardFace } from './desktop-pet-controller'
+import type { DesktopPetCardFace, ImportMessage } from './desktop-pet-controller'
 import { PET_SCALE_MAX, PET_SCALE_MIN, PET_SCALE_STEP, quantizeScale } from './desktop-pet-controller'
+import type { DesktopPetKey } from './locales'
 import css from './DesktopPetCard.module.css'
 
 /** Props the renderer binds for the desktop pet card. */
@@ -26,6 +27,27 @@ export type DesktopPetCardProps =
 /** GitHub repository path to the "adding a pet" guide. */
 const ADD_PET_DOC_URL = 'https://github.com/sereinmono/dsh-desktop-pet/blob/master/docs/adding-a-pet.md'
 
+/** Import outcome code → localized copy key (unknown codes fall back to generic). */
+const IMPORT_COPY: Record<string, DesktopPetKey> = {
+  'ok': 'desktopPet.importOk',
+  'duplicate-id': 'desktopPet.importConflict',
+  'no-folder-picker': 'desktopPet.importNoFolderPicker',
+  'petdex-not-found': 'desktopPet.importPetdexNotFound',
+  'petdex-failed': 'desktopPet.importPetdexFailed',
+}
+
+/** A small purple Petdex mark (no upstream icon exists in primitives). */
+function PetdexIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 1.6c1.9 0 3.5 1.4 3.5 3.2 0 .4-.1.8-.2 1.2h.1A3.4 3.4 0 0 1 14.6 8c0 .6-.1 1.1-.4 1.6.2.5.3 1 .3 1.5a3.2 3.2 0 0 1-3.2 3.2c-.5 0-1-.1-1.4-.4-.7.3-1.5.5-2.3.5s-1.6-.2-2.3-.5c-.4.3-.9.4-1.4.4A3.2 3.2 0 0 1 .7 11.1c0-.5.1-1 .3-1.5A3.4 3.4 0 0 1 2.6 6h.1c-.1-.4-.2-.8-.2-1.2 0-1.8 1.6-3.2 3.5-3.2 1 0 1.9.4 2.6 1 .7-.6 1.6-1 2.6-1Zm-1.2 6.8c-.4-.6-1.2-.9-2-.9H4.3a1.6 1.6 0 0 0-.3 3.2c.9 0 1.6-.5 2-1.2.2-.4.5-.7.8-1.1Zm3.2 0c.3.4.6.7.8 1.1.4.7 1.1 1.2 2 1.2a1.6 1.6 0 0 0 .3-3.2h-.5c-.8 0-1.6.3-2 .9-.2.1-.4.0-.6 0Z"
+      />
+    </svg>
+  )
+}
+
 /**
  * Render the desktop pet card.
  * @param props - locale copy, the card snapshot, and its form actions.
@@ -35,10 +57,21 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
   const { t } = props
   const state = props.useDesktopPet(s => s)
   const [open, setOpen] = useState(false)
+  const [petdexOpen, setPetdexOpen] = useState(false)
+  const [petdexSlug, setPetdexSlug] = useState('')
 
   if (!state.available) return null
   const title = t('desktopPet.title')
   const blocked = !state.dirty || state.invalid || state.saving
+  const importDisabled = state.importing || !state.writable
+
+  const confirmPetdex = () => {
+    const slug = petdexSlug.trim()
+    if (slug.length === 0 || importDisabled) return
+    props.importFromPetdex(slug)
+    setPetdexOpen(false)
+    setPetdexSlug('')
+  }
 
   return (
     <li className={clsx(css.card, open && css.cardOpen)}>
@@ -114,6 +147,71 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
               onReset={() => { props.resetField('petId') }}
             />
 
+            <div className={css.importSection}>
+              <div className={css.importActions}>
+                <button
+                  type="button"
+                  className={css.importButton}
+                  disabled={importDisabled}
+                  onClick={props.importFromFolder}
+                >
+                  <IconFolderOpen16 className={css.importIcon} />
+                  {t('desktopPet.addFromFolder')}
+                </button>
+                <button
+                  type="button"
+                  className={clsx(css.importButton, css.importButtonPetdex)}
+                  disabled={importDisabled}
+                  onClick={() => { setPetdexOpen(v => !v) }}
+                >
+                  <PetdexIcon className={css.importIcon} />
+                  {t('desktopPet.addFromPetdex')}
+                </button>
+              </div>
+
+              {petdexOpen && !state.importing
+                ? (
+                  <div className={css.petdexRow}>
+                    <Input
+                      className={css.petdexInput}
+                      placeholder={t('desktopPet.petdexSlugPlaceholder')}
+                      value={petdexSlug}
+                      onChange={(event) => { setPetdexSlug(event.target.value) }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') confirmPetdex()
+                        if (event.key === 'Escape') setPetdexOpen(false)
+                      }}
+                      autoFocus
+                    />
+                    <div className={css.petdexButtons}>
+                      <button
+                        type="button"
+                        className={css.discard}
+                        onClick={() => { setPetdexOpen(false) }}
+                      >
+                        {t('desktopPet.petdexCancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className={css.save}
+                        disabled={petdexSlug.trim().length === 0}
+                        onClick={confirmPetdex}
+                      >
+                        {t('desktopPet.petdexConfirm')}
+                      </button>
+                    </div>
+                  </div>
+                )
+                : null}
+
+              {state.importing
+                ? <p className={css.importResult} role="status">{t('desktopPet.importing')}</p>
+                : null}
+              {state.importMessage
+                ? <ImportResultRow message={state.importMessage} onClose={props.clearImportMessage} t={t} />
+                : null}
+            </div>
+
             <p className={css.docLink}>
               <a href={ADD_PET_DOC_URL} target="_blank" rel="noreferrer">{t('desktopPet.addPetLink')}</a>
             </p>
@@ -141,6 +239,31 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
         )
         : null}
     </li>
+  )
+}
+
+/** The import outcome row: localized copy plus a dismiss affordance. */
+function ImportResultRow(props: {
+  message: ImportMessage
+  onClose: () => void
+  t: (key: DesktopPetKey) => string
+}) {
+  const key = IMPORT_COPY[props.message.code] ?? 'desktopPet.importFailed'
+  return (
+    <p
+      className={clsx(css.importResult, props.message.ok ? css.importResultOk : css.importResultError)}
+      role="status"
+    >
+      <span className={css.importResultText}>{props.t(key)}</span>
+      <button
+        type="button"
+        className={css.importClose}
+        onClick={props.onClose}
+        aria-label={props.t('discard')}
+      >
+        ✕
+      </button>
+    </p>
   )
 }
 

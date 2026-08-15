@@ -9,6 +9,7 @@
  */
 
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../', import.meta.url))
@@ -21,3 +22,12 @@ export const PETS_DIR = join(ASSETS_DIR, 'pets')
 export const NEUTRALINO_APP_DIR = join(ASSETS_DIR, 'neutralino')
 /** Downloaded Neutralino runtime binaries (`runtime/`, git-ignored). */
 export const RUNTIME_DIR = join(PACKAGE_ROOT, 'runtime')
+
+/**
+ * Per-user data directory (`~/.dsh/desktop-pet/`), shared with the window
+ * position persistence so user-owned state lives outside the installed
+ * package and survives npm upgrades/reinstalls.
+ */
+export const USER_DATA_DIR = join(homedir(), '.dsh', 'desktop-pet')
+/** User-imported pets (`~/.dsh/desktop-pet/pets/<id>/`). */
+export const USER_PETS_DIR = join(USER_DATA_DIR, 'pets')

@@ -35,6 +35,10 @@ export interface DesktopPetSettings {
   petId?: string
   hideWhenIdle?: boolean
   availablePets?: AvailablePet[]
+  /** One-shot import request (written by the card, executed by the host). */
+  petAction?: { kind: 'importFolder' | 'importPetdex'; requestId: string; payload?: { slug?: string } } | null
+  /** Import outcome (written back by the host, shown then cleared by the card). */
+  importResult?: { ok: boolean; code: string; requestId: string; petId?: string; at: number } | null
 }
 
 /** Form-level state every card field shares (mirrors CardShell). */
@@ -54,6 +58,13 @@ export interface DesktopPetFieldState<T> {
   invalid: boolean
 }
 
+/** Outcome of the last pet import, translated to UI copy by the card. */
+export interface ImportMessage {
+  ok: boolean
+  code: string
+  petId?: string
+}
+
 /** The card's reactive snapshot. */
 export interface DesktopPetCardState extends DesktopPetCardShell {
   enabled: DesktopPetFieldState<boolean>
@@ -61,6 +72,10 @@ export interface DesktopPetCardState extends DesktopPetCardShell {
   petId: DesktopPetFieldState<string>
   hideWhenIdle: DesktopPetFieldState<boolean>
   availablePets: AvailablePet[]
+  /** True while an import request is in flight. */
+  importing: boolean
+  /** Outcome of the last import, or null once shown/cleared. */
+  importMessage: ImportMessage | null
 }
 
 /** The write actions the card's slot entry injects. */
@@ -69,6 +84,12 @@ export interface DesktopPetCardFace {
   resetField: (field: FieldName) => void
   save: () => void
   discard: () => void
+  /** Ask the host to open a folder picker and import the chosen pet. */
+  importFromFolder: () => void
+  /** Ask the host to fetch a Petdex pet by slug and import it. */
+  importFromPetdex: (slug: string) => void
+  /** Clear the shown import outcome. */
+  clearImportMessage: () => void
   hooks: {
     desktopPet: SnapshotStore<DesktopPetCardState>
   }
@@ -83,6 +104,7 @@ interface Section {
   petId?: string
   hideWhenIdle?: boolean
   availablePets?: AvailablePet[]
+  importResult?: DesktopPetSettings['importResult']
 }
 
 /** A section with every field defaulted to a concrete value. */
@@ -92,6 +114,7 @@ interface ResolvedSection {
   petId: string
   hideWhenIdle: boolean
   availablePets: AvailablePet[]
+  importResult: DesktopPetSettings['importResult']
 }
 
 /** Guard a resolved section into the card's known-good shape. */
@@ -109,6 +132,7 @@ function effective(section: unknown): ResolvedSection {
     petId: typeof value.petId === 'string' && value.petId.length > 0 ? value.petId : 'text',
     hideWhenIdle: typeof value.hideWhenIdle === 'boolean' ? value.hideWhenIdle : false,
     availablePets: availablePets.length > 0 ? availablePets : [FALLBACK_PET],
+    importResult: value.importResult ?? null,
   }
 }
 
@@ -139,11 +163,47 @@ export class DesktopPetCardController {
   private staged = new Map<FieldName, unknown>()
   private saving = false
   private failed = false
+  private importing = false
+  private importMessage: ImportMessage | null = null
+  private pendingRequestId: string | null = null
 
   /** @param scope - the bound settings scope for the `desktop-pet` namespace. */
   constructor(private readonly scope: SettingsScope<DesktopPetSettings>) {
     this.store = createSnapshotStore(this.projection())
-    scope.subscribe(() => { this.store.set(this.projection()) })
+    scope.subscribe(() => this.consumeImportResult())
+  }
+
+  private requestId(): string {
+    return `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  /**
+   * After each committed settings change, pick up an `importResult` written by
+   * the host for the request this card issued, surface it, and clear it so a
+   * stale document value never replays. A request is also settled when the
+   * host cleared `petAction` without writing an outcome (e.g. the user
+   * cancelled the folder chooser) — but an absent `importResult` alone is not
+   * a signal, since the resolved section defaults it to null while the
+   * request is still in flight.
+   */
+  private consumeImportResult(): void {
+    const snapshot = this.scope.getSnapshot()
+    const section = effective(snapshot.value)
+    const result = section.importResult
+    const action = snapshot.value?.petAction
+    if (result && this.pendingRequestId && result.requestId === this.pendingRequestId) {
+      this.pendingRequestId = null
+      this.importing = false
+      this.importMessage = { ok: result.ok, code: result.code, petId: result.petId }
+      // Clear the outcome from the wire once shown.
+      void this.scope.unset('importResult').catch(() => {})
+    } else if (this.pendingRequestId && action == null) {
+      // The host cleared the request without an outcome (e.g. user cancelled
+      // the folder picker); nothing to report.
+      this.pendingRequestId = null
+      this.importing = false
+    }
+    this.store.set(this.projection())
   }
 
   private userLayer(): Partial<Section> | undefined {
@@ -179,6 +239,8 @@ export class DesktopPetCardController {
       invalid,
       saving: this.saving,
       failed: this.failed,
+      importing: this.importing,
+      importMessage: this.importMessage,
       enabled: this.fieldState<boolean>('enabled', section.enabled),
       petScale: this.fieldState<number>('petScale', quantizeScale(section.petScale)),
       petId: this.fieldState<string>('petId', section.petId),
@@ -207,8 +269,35 @@ export class DesktopPetCardController {
         this.store.set(this.projection())
       },
       save: () => { void this.save() },
+      importFromFolder: () => {
+        this.requestImport({ kind: 'importFolder' })
+      },
+      importFromPetdex: (slug: string) => {
+        this.requestImport({ kind: 'importPetdex', payload: { slug } })
+      },
+      clearImportMessage: () => {
+        if (this.importMessage === null) return
+        this.importMessage = null
+        void this.scope.unset('importResult').catch(() => {})
+        this.store.set(this.projection())
+      },
       hooks: { desktopPet: this.store },
     }
+  }
+
+  /** Fire a one-shot import request through the settings wire. */
+  private requestImport(action: { kind: 'importFolder' | 'importPetdex'; payload?: { slug?: string } }): void {
+    if (this.importing || !this.scope.getSnapshot().writable) return
+    this.importing = true
+    this.importMessage = null
+    this.pendingRequestId = this.requestId()
+    this.store.set(this.projection())
+    void this.scope.set('petAction', { ...action, requestId: this.pendingRequestId }).catch(() => {
+      this.importing = false
+      this.pendingRequestId = null
+      this.importMessage = { ok: false, code: 'petdex-failed' }
+      this.store.set(this.projection())
+    })
   }
 
   private async save(): Promise<void> {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { scanPets } from '../src/pets'
+import { scanPets, scanPetsRoots } from '../src/pets'
 
 function makePetDir(id: string, displayName?: string, manifestId = id) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-pets-'))
@@ -43,5 +43,27 @@ describe('scanPets', () => {
     writeFileSync(join(root, 'bad', 'pet.json'), JSON.stringify({ displayName: 'No id' }))
     const entries = scanPets(root)
     expect(entries).toEqual([{ id: 'good', displayName: 'Good' }])
+  })
+})
+
+describe('scanPetsRoots multi-root', () => {
+  it('merges entries from all roots, deduplicating by id with the first root winning', () => {
+    const user = makePetDir('cat', 'User Cat')
+    const bundled = makePetDir('dog', 'Bundled Dog')
+    makePetDir('cat', 'Bundled Cat') // duplicate id in the second root
+
+    const entries = scanPetsRoots([user, bundled])
+    // cat comes from the user root (first); dog from the bundled root.
+    expect(entries).toEqual([
+      { id: 'cat', displayName: 'User Cat' },
+      { id: 'dog', displayName: 'Bundled Dog' },
+    ])
+  })
+
+  it('returns an empty list (raw merge) when every root is empty; scanPets wraps the fallback', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-pets-'))
+    expect(scanPetsRoots([root])).toEqual([])
+    // The fallback lives on the scanPets wrapper, not the raw multi-root merge.
+    expect(scanPets(root)).toEqual([{ id: 'text', displayName: 'Text (test)' }])
   })
 })

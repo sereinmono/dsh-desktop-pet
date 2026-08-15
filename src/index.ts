@@ -16,9 +16,10 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 
 import { registerPetCommand } from './commands'
-import { Config, type PetConfig } from './config'
+import { Config, type PetAction, type PetConfig } from './config'
 import { PetStateMachine } from './core/PetStateMachine'
 import type { NormalizedEvent, SemanticState } from './core/types'
+import { importPetFromDirectory, importPetFromPetdex } from './imports'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
 import { loadPosition, savePosition } from './persistence'
 import { resolvePetManifest, scanPets } from './pets'
@@ -73,6 +74,10 @@ export function apply(ctx: Context, config: PetConfig): void {
     let catalog: PetSettingsSnapshot['availablePets'] = []
     let loadedPetKey: string | null = null
     let reconcileSeq = 0
+    // Serializes import requests so a slow import never re-enters itself.
+    let importSeq = 0
+    // Resolved lazily from the optional `directoryPicker` service.
+    let directoryPicker: { capability(): { kind: string; pick?(signal: AbortSignal): Promise<string | null> } } | undefined
 
     /** Whether the window should be visible given the current state + settings. */
     function shouldBeVisibleFor(state: SemanticState | undefined): boolean {
@@ -225,11 +230,81 @@ export function apply(ctx: Context, config: PetConfig): void {
         // the settings round-trip resolved (a stale user layer must not
         // shadow the directory facts). Everything else follows settings.
         currentSettings = { ...settings, availablePets: catalog }
+        if (settings.petAction) void handlePetAction(settings.petAction)
         void reconcile(currentSettings).catch((error) => {
           log.warn('settings reconcile failed: %s', (error as Error)?.message ?? String(error))
         })
       })
     })
+
+    // Optional folder-picker service: lets the card's "add from folder" button
+    // open a native OS chooser. Absent (e.g. no host picker backend), the
+    // client is told to fall back to a manual copy.
+    petCtx.inject(['directoryPicker'], (sctx) => {
+      directoryPicker = sctx.get('directoryPicker') as typeof directoryPicker
+    })
+
+    /** Execute a one-shot import request from the settings card. */
+    async function handlePetAction(action: PetAction): Promise<void> {
+      const seq = ++importSeq
+      const requestId = action.requestId
+      const writeResult = async (patch: Partial<PetSettingsSnapshot>) => {
+        if (seq !== importSeq) return // a newer import superseded this one
+        try {
+          await settingsHandle?.update(patch)
+        } catch (error) {
+          log.warn('import result write failed: %s', (error as Error)?.message ?? String(error))
+        }
+      }
+
+      let result: Awaited<ReturnType<typeof importPetFromDirectory>>
+      if (action.kind === 'importFolder') {
+        const capability = directoryPicker?.capability()
+        if (!capability || capability.kind !== 'native' || !capability.pick) {
+          await writeResult({
+            petAction: null,
+            importResult: { ok: false, code: 'no-folder-picker', requestId, at: Date.now() },
+          })
+          return
+        }
+        let chosen: string | null
+        try {
+          chosen = await capability.pick(new AbortController().signal)
+        } catch (error) {
+          await writeResult({
+            petAction: null,
+            importResult: { ok: false, code: 'copy-failed', requestId, at: Date.now(), detail: (error as Error)?.message },
+          })
+          return
+        }
+        if (!chosen) {
+          // User cancelled the chooser; clear the request without an outcome.
+          await writeResult({ petAction: null })
+          return
+        }
+        result = importPetFromDirectory(chosen)
+      } else {
+        const slug = action.payload?.slug ?? ''
+        result = await importPetFromPetdex(slug)
+      }
+
+      if (result.ok && result.petId) {
+        // The catalog is a scan-time fact: re-scan so the new pet appears in
+        // the picker, then switch to it so the user sees the result.
+        catalog = scanPets()
+        await writeResult({
+          petAction: null,
+          availablePets: catalog,
+          petId: result.petId,
+          importResult: { ok: true, code: 'ok', requestId, petId: result.petId, at: Date.now() },
+        })
+      } else {
+        await writeResult({
+          petAction: null,
+          importResult: { ok: false, code: result.code, requestId, at: Date.now() },
+        })
+      }
+    }
 
     // Initial window creation (runs even when no settings service exists).
     void reconcile(currentSettings).catch((error) => {

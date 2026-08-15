@@ -22,6 +22,26 @@ export interface PetCatalogEntry {
   displayName: string
 }
 
+/** A one-shot action the client card requests and the host executes. */
+export interface PetAction {
+  kind: 'importFolder' | 'importPetdex'
+  /** Correlation id so the host's result can be matched to the request. */
+  requestId: string
+  payload?: { slug?: string }
+}
+
+/** The outcome of a pet import, written back by the host. */
+export interface PetImportResult {
+  ok: boolean
+  /** Machine-readable outcome code the client translates to UI copy. */
+  code: string
+  requestId: string
+  petId?: string
+  /** Optional human detail (e.g. a CLI stderr snippet) for diagnostics. */
+  detail?: string
+  at: number
+}
+
 /** Settings namespace name (spelled identically in the client package). */
 export const DESKTOP_PET_SETTINGS_NS = 'desktop-pet'
 
@@ -41,6 +61,13 @@ export interface PetSettings {
    * user-layer value cannot shadow the directory facts.
    */
   availablePets: PetCatalogEntry[]
+  /**
+   * One-shot import request from the card. `null` (or absent) means no pending
+   * request; the host clears it to `null` after acting so it never replays.
+   */
+  petAction?: PetAction | null
+  /** Import outcome written back by the host; `null` (or absent) = none shown. */
+  importResult?: PetImportResult | null
 }
 
 export const PetSettingsSchema: z<PetSettings> = z.object({
@@ -52,6 +79,19 @@ export const PetSettingsSchema: z<PetSettings> = z.object({
     id: z.string(),
     displayName: z.string(),
   })).default([]),
+  petAction: z.object({
+    kind: z.union(['importFolder', 'importPetdex']),
+    requestId: z.string(),
+    payload: z.object({ slug: z.string() }).default(undefined as never),
+  }).default(null as never),
+  importResult: z.object({
+    ok: z.boolean(),
+    code: z.string(),
+    requestId: z.string(),
+    petId: z.string().default(undefined as never),
+    detail: z.string().default(undefined as never),
+    at: z.number(),
+  }).default(null as never),
 })
 
 export interface PetConfig {

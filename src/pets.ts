@@ -1,59 +1,86 @@
 /**
- * Host-side pet catalog: scans the bundled `assets/pets/` directory at startup
- * and loads a pet directory into a decoded atlas.
+ * Host-side pet catalog: scans the bundled `assets/pets/` directory plus the
+ * per-user `~/.dsh/desktop-pet/pets/` directory (where imported pets live) and
+ * resolves a pet directory into a sprite-sheet reference.
+ *
+ * User-imported pets shadow bundled pets with the same id: the user directory
+ * is scanned first so a user override wins, and imported pets survive npm
+ * upgrades (they live outside the installed package).
  */
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PetCatalogEntry } from './config'
-import { PETS_DIR } from './paths'
-
-/** Directory containing the bundled pet directories (`assets/pets/`). */
-const ASSETS_DIR = PETS_DIR
+import { PETS_DIR, USER_PETS_DIR } from './paths'
 
 /** Fallback entry used when no pet directory can be found on disk. */
 const FALLBACK_ENTRY: PetCatalogEntry = { id: 'text', displayName: 'Text (test)' }
 
+/** Scan one pets directory for valid pet directories (helper, test-friendly). */
+function scanDirectory(directory: string): PetCatalogEntry[] {
+  const entries: PetCatalogEntry[] = []
+  let names
+  try {
+    names = readdirSync(directory, { withFileTypes: true })
+  } catch {
+    // Directory missing entirely; nothing to scan.
+    return entries
+  }
+  for (const dirent of names) {
+    if (!dirent.isDirectory()) continue
+    const id = dirent.name
+    try {
+      const raw = readFileSync(join(directory, id, 'pet.json'), 'utf8')
+      const manifest = JSON.parse(raw) as Record<string, unknown>
+      if (typeof manifest.id !== 'string' || manifest.id.length === 0) continue
+      const displayName = typeof manifest.displayName === 'string' && manifest.displayName.length > 0
+        ? manifest.displayName
+        : id
+      entries.push({ id, displayName })
+    } catch {
+      // Not a valid pet directory; skip it.
+    }
+  }
+  return entries
+}
+
 /**
- * Scan a directory of pets (`assets/pets/` by default) for pet directories and
- * read their `pet.json` manifests.
+ * Scan a set of pets roots for valid pet directories, deduplicating by id with
+ * earlier roots winning. Used by {@link scanPets} and directly by tests.
+ */
+export function scanPetsRoots(roots: readonly string[]): PetCatalogEntry[] {
+  const entries: PetCatalogEntry[] = []
+  const seen = new Set<string>()
+  for (const root of roots) {
+    for (const entry of scanDirectory(root)) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      entries.push(entry)
+    }
+  }
+  return entries
+}
+
+/**
+ * Scan the pet catalog: the bundled `assets/pets/` directory plus the
+ * per-user imported-pets directory. The user directory wins on id conflicts
+ * (imported pets shadow bundled ones).
  *
  * A directory is a pet if it contains a readable `pet.json` with a string
- * `id`. The directory name is the pet id (a `dsh-` prefix on the manifest id
- * is stripped for display). Invalid directories are skipped so one broken pet
- * never takes down the catalog. Returns the fallback `text` entry when nothing
- * valid is found.
+ * `id`. The directory name is the pet id. Invalid directories are skipped so
+ * one broken pet never takes down the catalog. Returns the fallback `text`
+ * entry when nothing valid is found.
  *
  * Synchronous so the settings namespace can be registered with the complete
  * catalog as its `base` during the plugin's synchronous startup.
  *
- * @param directory - overrides the assets directory (used by tests).
+ * @param directory - when given, scans only that directory (used by tests and
+ *   keeps the bundled path injectable); otherwise scans both roots.
  */
-export function scanPets(directory: string = ASSETS_DIR): PetCatalogEntry[] {
-  let entries: PetCatalogEntry[] = []
-  try {
-    const names = readdirSync(directory, { withFileTypes: true })
-    for (const dirent of names) {
-      if (!dirent.isDirectory()) continue
-      const id = dirent.name
-      try {
-        const raw = readFileSync(join(directory, id, 'pet.json'), 'utf8')
-        const manifest = JSON.parse(raw) as Record<string, unknown>
-        if (typeof manifest.id !== 'string' || manifest.id.length === 0) continue
-        const displayName = typeof manifest.displayName === 'string' && manifest.displayName.length > 0
-          ? manifest.displayName
-          : id
-        entries.push({ id, displayName })
-      } catch {
-        // Not a valid pet directory; skip it.
-      }
-    }
-  } catch {
-    // Assets directory missing entirely; fall through to the fallback.
-  }
-
-  if (entries.length === 0) entries = [FALLBACK_ENTRY]
-  return entries
+export function scanPets(directory?: string): PetCatalogEntry[] {
+  const roots = directory !== undefined ? [directory] : [USER_PETS_DIR, PETS_DIR]
+  const entries = scanPetsRoots(roots)
+  return entries.length > 0 ? entries : [FALLBACK_ENTRY]
 }
 
 /** The manifest fields the renderer needs to point the frontend at a sprite sheet. */
@@ -63,13 +90,21 @@ export interface PetManifestRef {
   spritesheetPath: string
 }
 
+/** The on-disk directory a pet id resolves to (user root first). */
+export function petDirectory(petId: string): string {
+  const userDir = join(USER_PETS_DIR, petId)
+  if (existsSync(join(userDir, 'pet.json'))) return userDir
+  return join(PETS_DIR, petId)
+}
+
 /**
- * Resolve a pet by id (a directory name under `assets/pets/`) into its sprite
- * sheet reference. No pixel decoding happens here — the frontend loads the
- * sheet itself. Throws if the directory or manifest is unreadable.
+ * Resolve a pet by id into its sprite sheet reference. The user directory is
+ * checked first, then the bundled one; the manifest is read live from disk.
+ * No pixel decoding happens here — the frontend loads the sheet itself.
+ * Throws if the directory or manifest is unreadable.
  */
 export async function resolvePetManifest(petId: string): Promise<PetManifestRef> {
-  const directory = join(ASSETS_DIR, petId)
+  const directory = petDirectory(petId)
   const raw = readFileSync(join(directory, 'pet.json'), 'utf8')
   const manifest = JSON.parse(raw) as Record<string, unknown>
   if (typeof manifest.id !== 'string' || manifest.id.length === 0) {
@@ -79,4 +114,9 @@ export async function resolvePetManifest(petId: string): Promise<PetManifestRef>
     throw new Error(`pet.json in "${petId}" is missing a string "spritesheetPath" field`)
   }
   return { petId, spritesheetPath: manifest.spritesheetPath }
+}
+
+/** The per-user imported-pets directory (used by tests). */
+export function userPetsDir(): string {
+  return USER_PETS_DIR
 }
