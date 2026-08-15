@@ -9,7 +9,7 @@ It is **not** a second chat UI, a task manager, or a full desktop app. It is a s
 - **Plugin-first**: a normal deepseek-harness plugin — no separately launched daemon, browser, or desktop app.
 - **Zero network**: all assets ship with the plugin; no telemetry, CDN, or remote service.
 - **Zero added LLM cost**: event → state resolution is fully deterministic.
-- **Runtime-discovered pets**: pets under `assets/pets/` are discovered at startup, so adding a pet is dropping a folder in — no rebuild.
+- **Runtime-discovered pets**: pets under `assets/pets/` (bundled) and `~/.dsh/desktop-pet/pets/` (user-imported) are discovered at startup, so adding a pet is dropping a folder in — no rebuild.
 
 ---
 
@@ -86,13 +86,16 @@ Harness fully functional.
 
 ## Adding a pet
 
-Pets are plain folders following a fixed sprite-sheet format. Three common ways
-to obtain one are covered in the dedicated guide, each with a copy-paste prompt
-and manual steps:
+Pets are plain folders following a fixed sprite-sheet format. Imported pets
+live in the **user pets directory** (`~/.dsh/desktop-pet/pets/<id>/`), outside
+the installed package, so they survive plugin upgrades. Three common ways to
+obtain one are covered in the dedicated guide, each with a copy-paste prompt
+and manual steps — and the settings card offers buttons for two of them
+(import from a folder, and import from Petdex):
 
-- **hatch-pet** — generate a pet with the skill, then drop its output folder into `assets/pets/`.
-- **Import an existing folder** — copy a folder containing `pet.json` + `spritesheet.webp` into `assets/pets/`.
-- **Petdex community** — download a community pet and copy it in.
+- **hatch-pet** — generate a pet with the skill, then drop its output folder into `~/.dsh/desktop-pet/pets/`.
+- **Import an existing folder** — copy a folder containing `pet.json` + `spritesheet.webp` into `~/.dsh/desktop-pet/pets/`.
+- **Petdex community** — download a community pet with `npx petdex install <slug>` and copy it in.
 
 See **[Adding a Pet](docs/adding-a-pet.md)** for the full walkthrough, and the
 **[asset format reference](docs/adding-a-pet.md#asset-format-reference)** for the
@@ -121,7 +124,7 @@ All fields are optional and validated with a Schemastery schema (invalid values 
 | `enabled` | `true` | Master switch. |
 | `alwaysOnTop` | `true` | Keep the pet above other windows. |
 | `petScale` | `1` | Pet size, 0.5–4× in 0.25 steps. |
-| `petId` | `text` | Which pet to display (a directory name under `assets/pets/`). |
+| `petId` | `text` | Which pet to display (a directory name under `assets/pets/` or `~/.dsh/desktop-pet/pets/`). |
 | `hideWhenIdle` | `false` | Automatically hide the pet when it sleeps (no task), and show it again on activity. |
 | `animationEnabled` | `true` | Run the frame animation (static frame when false). |
 | `idleFrequencySec` | `20` | Seconds (≥8) between randomized idle variations. |

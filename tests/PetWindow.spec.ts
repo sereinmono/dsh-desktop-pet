@@ -29,7 +29,7 @@ class FakeHandle implements WindowHandle {
   destroy(): void { this.destroyed = true }
 }
 
-const pet = { petId: 'text', spritesheetPath: 'spritesheet.webp' }
+const pet = { petId: 'text', spritesheetPath: 'spritesheet.webp', root: 'bundled' as const }
 
 describe('PetWindow live settings', () => {
   it('setVisible shows/hides without destroying', async () => {
@@ -66,7 +66,7 @@ describe('PetWindow live settings', () => {
     const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
 
-    const pet2 = { petId: 'dog', spritesheetPath: 'sheet.webp' }
+    const pet2 = { petId: 'dog', spritesheetPath: 'sheet.webp', root: 'user' as const }
     await w.loadPet(pet2)
     expect(handles).toHaveLength(2)
     expect(handles[0].destroyed).toBe(true)

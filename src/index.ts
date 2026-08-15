@@ -16,9 +16,10 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 
 import { registerPetCommand } from './commands'
-import { Config, type PetConfig } from './config'
+import { Config, type PetAction, type PetConfig } from './config'
 import { PetStateMachine } from './core/PetStateMachine'
 import type { NormalizedEvent, SemanticState } from './core/types'
+import { importPetFromDirectory, importPetFromPetdex } from './imports'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
 import { loadPosition, savePosition } from './persistence'
 import { resolvePetManifest, scanPets } from './pets'
@@ -73,6 +74,16 @@ export function apply(ctx: Context, config: PetConfig): void {
     let catalog: PetSettingsSnapshot['availablePets'] = []
     let loadedPetKey: string | null = null
     let reconcileSeq = 0
+    // Serializes import requests so a slow import never re-enters itself.
+    let importSeq = 0
+    // A committed petAction request may be re-delivered by the settings
+    // service on unrelated changes while the import is still running; running
+    // it twice would collide (duplicate-id) and the second write-back would
+    // supersede the first. Only the first delivery of a requestId runs.
+    const handledImportRequests = new Set<string>()
+    let activeImportRequest: string | null = null
+    // Resolved lazily from the optional `directoryPicker` service.
+    let directoryPicker: { capability(): { kind: string; pick?(signal: AbortSignal): Promise<string | null> } } | undefined
 
     /** Whether the window should be visible given the current state + settings. */
     function shouldBeVisibleFor(state: SemanticState | undefined): boolean {
@@ -225,11 +236,107 @@ export function apply(ctx: Context, config: PetConfig): void {
         // the settings round-trip resolved (a stale user layer must not
         // shadow the directory facts). Everything else follows settings.
         currentSettings = { ...settings, availablePets: catalog }
+        if (settings.petAction) void handlePetAction(settings.petAction)
         void reconcile(currentSettings).catch((error) => {
           log.warn('settings reconcile failed: %s', (error as Error)?.message ?? String(error))
         })
       })
     })
+
+    // Optional folder-picker service: lets the card's "add from folder" button
+    // open a native OS chooser. Absent (e.g. no host picker backend), the
+    // client is told to fall back to a manual copy.
+    petCtx.inject(['directoryPicker'], (sctx) => {
+      directoryPicker = sctx.get('directoryPicker') as typeof directoryPicker
+    })
+
+    /** Execute a one-shot import request from the settings card. */
+    async function handlePetAction(action: PetAction): Promise<void> {
+      // Idempotency guard: the settings service can re-deliver the same
+      // committed request (e.g. on unrelated settings changes) while the
+      // import is still in flight. Running it twice would collide on the
+      // destination directory and the second write-back would supersede the
+      // first, silently dropping the imported pet from the catalog.
+      if (handledImportRequests.has(action.requestId)) return
+      if (activeImportRequest !== null && activeImportRequest !== action.requestId) {
+        // A different request is already running (the client serializes via
+        // its `importing` state, so this is defensive only). Drop the
+        // newcomer; the client will surface its own timeout.
+        return
+      }
+      handledImportRequests.add(action.requestId)
+      activeImportRequest = action.requestId
+
+      const seq = ++importSeq
+      const requestId = action.requestId
+      const writeResult = async (patch: Partial<PetSettingsSnapshot>) => {
+        if (seq !== importSeq) return // a newer import superseded this one
+        try {
+          await settingsHandle?.update(patch)
+        } catch (error) {
+          // The result channel is the only way the card learns the outcome;
+          // a failed write leaves the request dangling, so log loudly.
+          log.warn('import result write failed: %s (patch keys: %s)', (error as Error)?.message ?? String(error), Object.keys(patch).join(','))
+        }
+      }
+      // Report an import outcome; on failure keep the request cleared so it
+      // cannot replay and the card surfaces an error row.
+      const fail = async (code: string, detail?: string) => {
+        await writeResult({
+          petAction: null,
+          importResult: { ok: false, code, requestId, at: Date.now(), detail },
+        })
+      }
+
+      try {
+        let result: Awaited<ReturnType<typeof importPetFromDirectory>>
+        if (action.kind === 'importFolder') {
+          const capability = directoryPicker?.capability()
+          if (!capability || capability.kind !== 'native' || !capability.pick) {
+            await fail('no-folder-picker')
+            return
+          }
+          let chosen: string | null
+          try {
+            chosen = await capability.pick(new AbortController().signal)
+          } catch (error) {
+            await fail('copy-failed', (error as Error)?.message)
+            return
+          }
+          if (!chosen) {
+            // User cancelled the chooser; clear the request without an outcome.
+            await writeResult({ petAction: null })
+            return
+          }
+          result = importPetFromDirectory(chosen)
+        } else {
+          const slug = action.payload?.slug ?? ''
+          result = await importPetFromPetdex(slug)
+        }
+
+        if (result.ok && result.petId) {
+          // The catalog is a scan-time fact: re-scan so the new pet appears in
+          // the picker, then switch to it so the user sees the result.
+          catalog = scanPets()
+          await writeResult({
+            petAction: null,
+            availablePets: catalog,
+            petId: result.petId,
+            importResult: { ok: true, code: 'ok', requestId, petId: result.petId, at: Date.now() },
+          })
+        } else {
+          await fail(result.code)
+        }
+      } catch (error) {
+        // A synchronous failure inside the import (e.g. the Petdex CLI could
+        // not be spawned) must become a visible outcome, never an unhandled
+        // rejection that takes down the harness.
+        log.warn('pet import failed (request %s): %s', requestId, (error as Error)?.message ?? String(error))
+        await fail('petdex-failed', (error as Error)?.message)
+      } finally {
+        if (activeImportRequest === requestId) activeImportRequest = null
+      }
+    }
 
     // Initial window creation (runs even when no settings service exists).
     void reconcile(currentSettings).catch((error) => {

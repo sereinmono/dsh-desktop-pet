@@ -9,7 +9,7 @@
 - **插件优先**：就是一个普通的 deepseek-harness 插件——没有独立启动的守护进程、浏览器或桌面应用。
 - **零网络**：所有资源随插件发布；无遥测、无 CDN、无远程服务。
 - **零额外 LLM 成本**：事件 → 状态的解析完全确定，不额外调用模型。
-- **运行时发现宠物**：`assets/pets/` 下的宠物在启动时自动发现，添加宠物就是放进一个文件夹——无需重新构建。
+- **运行时发现宠物**：`assets/pets/`（随包）与 `~/.dsh/desktop-pet/pets/`（用户导入）下的宠物在启动时自动发现，添加宠物就是放进一个文件夹——无需重新构建。
 
 ---
 
@@ -74,11 +74,14 @@ dsh --profile <name>
 
 ## 添加宠物
 
-宠物是遵循固定精灵图格式的普通文件夹。专属指南里介绍了三种常见的获取方式，每种都配有可复制的 prompt 和手动步骤：
+宠物是遵循固定精灵图格式的普通文件夹。导入的宠物存放在**用户宠物目录**
+（`~/.dsh/desktop-pet/pets/<id>/`），位于已安装包之外，因此插件升级后依然保留。
+专属指南里介绍了三种常见的获取方式，每种都配有可复制的 prompt 和手动步骤——其中两种
+（从文件夹导入、从 Petdex 导入）还直接有设置卡片按钮：
 
-- **hatch-pet** —— 用技能生成宠物，然后把输出文件夹放进 `assets/pets/`。
-- **导入已有文件夹** —— 把含 `pet.json` + `spritesheet.webp` 的文件夹复制进 `assets/pets/`。
-- **Petdex 社区** —— 下载一个社区宠物并复制进去。
+- **hatch-pet** —— 用技能生成宠物，然后把输出文件夹放进 `~/.dsh/desktop-pet/pets/`。
+- **导入已有文件夹** —— 把含 `pet.json` + `spritesheet.webp` 的文件夹复制进 `~/.dsh/desktop-pet/pets/`。
+- **Petdex 社区** —— 用 `npx petdex install <slug>` 下载一个社区宠物并复制进去。
 
 完整流程见 **[添加宠物](docs/adding-a-pet.zh.md)**，确切的 `pet.json` 与精灵图布局见 **[资源格式参考](docs/adding-a-pet.zh.md#资源格式参考)**。
 
@@ -105,7 +108,7 @@ dsh --profile <name>
 | `enabled` | `true` | 总开关。 |
 | `alwaysOnTop` | `true` | 让宠物置顶。 |
 | `petScale` | `1` | 宠物大小，0.5–4 倍，步长 0.25。 |
-| `petId` | `text` | 显示哪个宠物（即 `assets/pets/` 下的目录名）。 |
+| `petId` | `text` | 显示哪个宠物（`assets/pets/` 或 `~/.dsh/desktop-pet/pets/` 下的目录名）。 |
 | `hideWhenIdle` | `false` | 宠物睡眠（无任务）时自动隐藏，有任务时重新显示。 |
 | `animationEnabled` | `true` | 运行动画（为 false 时显示静态帧）。 |
 | `idleFrequencySec` | `20` | 随机空闲动作间隔秒数（≥8）。 |

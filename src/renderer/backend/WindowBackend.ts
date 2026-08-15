@@ -9,6 +9,7 @@
  */
 
 import type { FrameDirective } from '../FrameDecoder'
+import type { PetRoot } from '../../pets'
 
 export interface WindowBackendOptions {
   width: number
@@ -20,6 +21,8 @@ export interface WindowBackendOptions {
   petId: string
   /** Manifest `spritesheetPath`, relative to the pet directory. */
   spritesheetPath: string
+  /** Which root the pet resolves from (drives the asset mount URL). */
+  petRoot: PetRoot
   /** Display scale applied to the 192×208 cell. */
   scale: number
   /** When true the window ignores pointer input (unsupported by Neutralino). */

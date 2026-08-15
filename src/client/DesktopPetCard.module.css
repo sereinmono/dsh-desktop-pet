@@ -320,19 +320,141 @@
   outline-offset: 1px;
 }
 
-/* "How to add a pet" documentation link. */
-.docLink {
+/* "How to add a pet" link, inline with the pet field hint. */
+.petMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  padding: 4px 0 8px;
   font-size: 12px;
   line-height: 1.5;
 }
 
-.docLink a {
+.petMetaText {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.petMetaLink {
   color: var(--dsw-alias-brand-primary);
   text-decoration: none;
 }
 
-.docLink a:hover {
+.petMetaLink:hover {
   text-decoration: underline;
+}
+
+/* Pet import actions (add from folder / add from Petdex). */
+.importActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.importButton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  background: none;
+  cursor: pointer;
+}
+
+.importButton:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-label-dimmed);
+}
+
+.importButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.importButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.importIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* Petdex slug entry row. */
+.petdexRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.petdexInput {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary);
+}
+
+.petdexInput:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.petdexButtons {
+  display: inline-flex;
+  gap: 8px;
+}
+
+/* Import status / outcome row. */
+.importResult {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.importResultText {
+  flex: 1;
+  min-width: 0;
+}
+
+.importResultOk {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.importResultError {
+  color: var(--dsw-alias-label-error);
+}
+
+.importClose {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.importClose:hover {
+  color: var(--dsw-alias-label-primary);
 }

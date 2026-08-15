@@ -11,10 +11,12 @@
 
 import { useState } from 'react'
 import clsx from 'clsx'
-import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, IconFolderOpen16, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DesktopPetCardFace } from './desktop-pet-controller'
+import type { DesktopPetCardFace, ImportMessage } from './desktop-pet-controller'
 import { PET_SCALE_MAX, PET_SCALE_MIN, PET_SCALE_STEP, quantizeScale } from './desktop-pet-controller'
+import type { DesktopPetKey } from './locales'
+import { PETDEX_ICON_DATA_URI } from './petdex-icon'
 import css from './DesktopPetCard.module.css'
 
 /** Props the renderer binds for the desktop pet card. */
@@ -26,6 +28,30 @@ export type DesktopPetCardProps =
 /** GitHub repository path to the "adding a pet" guide. */
 const ADD_PET_DOC_URL = 'https://github.com/sereinmono/dsh-desktop-pet/blob/master/docs/adding-a-pet.md'
 
+/** Import outcome code → localized copy key (unknown codes fall back to generic). */
+const IMPORT_COPY: Record<string, DesktopPetKey> = {
+  'ok': 'desktopPet.importOk',
+  'already-present': 'desktopPet.importAlreadyPresent',
+  'duplicate-id': 'desktopPet.importConflict',
+  'no-folder-picker': 'desktopPet.importNoFolderPicker',
+  'petdex-not-found': 'desktopPet.importPetdexNotFound',
+  'petdex-failed': 'desktopPet.importPetdexFailed',
+}
+
+/** The official Petdex favicon, inlined as a data URI. */
+function PetdexIcon({ className }: { className?: string }) {
+  return (
+    <img
+      src={PETDEX_ICON_DATA_URI}
+      alt=""
+      className={className}
+      width={16}
+      height={16}
+      draggable={false}
+    />
+  )
+}
+
 /**
  * Render the desktop pet card.
  * @param props - locale copy, the card snapshot, and its form actions.
@@ -35,10 +61,21 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
   const { t } = props
   const state = props.useDesktopPet(s => s)
   const [open, setOpen] = useState(false)
+  const [petdexOpen, setPetdexOpen] = useState(false)
+  const [petdexSlug, setPetdexSlug] = useState('')
 
   if (!state.available) return null
   const title = t('desktopPet.title')
   const blocked = !state.dirty || state.invalid || state.saving
+  const importDisabled = state.importing || !state.writable
+
+  const confirmPetdex = () => {
+    const slug = petdexSlug.trim()
+    if (slug.length === 0 || importDisabled) return
+    props.importFromPetdex(slug)
+    setPetdexOpen(false)
+    setPetdexSlug('')
+  }
 
   return (
     <li className={clsx(css.card, open && css.cardOpen)}>
@@ -112,11 +149,75 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
               pets={state.availablePets}
               onChange={(value) => { props.edit('petId', value) }}
               onReset={() => { props.resetField('petId') }}
-            />
+              metaLink={(
+                <a className={css.petMetaLink} href={ADD_PET_DOC_URL} target="_blank" rel="noreferrer">
+                  {t('desktopPet.addPetLink')}
+                </a>
+              )}
+            >
+              <div className={css.importActions}>
+                <button
+                  type="button"
+                  className={css.importButton}
+                  disabled={importDisabled}
+                  onClick={props.importFromFolder}
+                >
+                  <IconFolderOpen16 className={css.importIcon} />
+                  {t('desktopPet.addFromFolder')}
+                </button>
+                <button
+                  type="button"
+                  className={css.importButton}
+                  disabled={importDisabled}
+                  onClick={() => { setPetdexOpen(v => !v) }}
+                >
+                  <PetdexIcon className={css.importIcon} />
+                  {t('desktopPet.addFromPetdex')}
+                </button>
+              </div>
 
-            <p className={css.docLink}>
-              <a href={ADD_PET_DOC_URL} target="_blank" rel="noreferrer">{t('desktopPet.addPetLink')}</a>
-            </p>
+              {petdexOpen && !state.importing
+                ? (
+                  <div className={css.petdexRow}>
+                    <Input
+                      className={css.petdexInput}
+                      placeholder={t('desktopPet.petdexSlugPlaceholder')}
+                      value={petdexSlug}
+                      onChange={(event) => { setPetdexSlug(event.target.value) }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') confirmPetdex()
+                        if (event.key === 'Escape') setPetdexOpen(false)
+                      }}
+                      autoFocus
+                    />
+                    <div className={css.petdexButtons}>
+                      <button
+                        type="button"
+                        className={css.discard}
+                        onClick={() => { setPetdexOpen(false) }}
+                      >
+                        {t('desktopPet.petdexCancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className={css.save}
+                        disabled={petdexSlug.trim().length === 0}
+                        onClick={confirmPetdex}
+                      >
+                        {t('desktopPet.petdexConfirm')}
+                      </button>
+                    </div>
+                  </div>
+                )
+                : null}
+
+              {state.importing
+                ? <p className={css.importResult} role="status">{t('desktopPet.importing')}</p>
+                : null}
+              {state.importMessage
+                ? <ImportResultRow message={state.importMessage} onClose={props.clearImportMessage} t={t} />
+                : null}
+            </PetField>
 
             <div className={css.footer}>
               {state.failed ? <p className={css.failed} role="status">{t('saveFailed')}</p> : null}
@@ -141,6 +242,31 @@ export function DesktopPetCard(props: DesktopPetCardProps) {
         )
         : null}
     </li>
+  )
+}
+
+/** The import outcome row: localized copy plus a dismiss affordance. */
+function ImportResultRow(props: {
+  message: ImportMessage
+  onClose: () => void
+  t: (key: DesktopPetKey) => string
+}) {
+  const key = IMPORT_COPY[props.message.code] ?? 'desktopPet.importFailed'
+  return (
+    <p
+      className={clsx(css.importResult, props.message.ok ? css.importResultOk : css.importResultError)}
+      role="status"
+    >
+      <span className={css.importResultText}>{props.t(key)}</span>
+      <button
+        type="button"
+        className={css.importClose}
+        onClick={props.onClose}
+        aria-label={props.t('discard')}
+      >
+        ✕
+      </button>
+    </p>
   )
 }
 
@@ -247,7 +373,7 @@ function ScaleField(props: {
   )
 }
 
-/** The pet picker dropdown. */
+/** The pet picker block: dropdown + import actions + hint/link line. */
 function PetField(props: {
   id: string
   label: string
@@ -260,9 +386,29 @@ function PetField(props: {
   pets: ReadonlyArray<{ id: string; displayName: string }>
   onChange: (value: string) => void
   onReset: () => void
+  metaLink?: React.ReactNode
+  children?: React.ReactNode
 }) {
   return (
-    <FieldChrome {...props}>
+    <div className={css.field}>
+      <div className={css.head}>
+        <label className={css.label} htmlFor={props.id}>{props.label}</label>
+        {props.overridden
+          ? (
+            <span className={css.badges}>
+              <span className={css.badge}>{props.overriddenLabel}</span>
+              <button
+                type="button"
+                className={css.reset}
+                disabled={props.disabled}
+                onClick={props.onReset}
+              >
+                {props.resetLabel}
+              </button>
+            </span>
+          )
+          : null}
+      </div>
       <select
         id={props.id}
         className={css.select}
@@ -274,6 +420,11 @@ function PetField(props: {
           <option key={pet.id} value={pet.id}>{pet.displayName}</option>
         ))}
       </select>
-    </FieldChrome>
+      {props.children}
+      <p className={css.petMeta}>
+        <span className={css.petMetaText}>{props.hint}</span>
+        {props.metaLink}
+      </p>
+    </div>
   )
 }

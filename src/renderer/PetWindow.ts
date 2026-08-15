@@ -15,15 +15,18 @@
 
 import type { CodexPetState, SemanticState } from '../core/types'
 import { SEMANTIC_TO_CODEX } from '../core/types'
+import type { PetRoot } from '../pets'
 import { AnimationController, type AnimationClock } from './AnimationController'
 import type { FrameDirective } from './FrameDecoder'
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from './backend/WindowBackend'
 
-/** A pet the window can display: its catalog id and sprite-sheet file. */
+/** A pet the window can display: its catalog id, sprite-sheet file, and root. */
 export interface PetWindowPet {
   petId: string
   /** Manifest `spritesheetPath`, relative to the pet directory. */
   spritesheetPath: string
+  /** Whether the pet lives in the user pets directory or the bundled one. */
+  root: PetRoot
 }
 
 export interface PetWindowOptions {
@@ -137,6 +140,7 @@ export class PetWindow {
       alwaysOnTop: true,
       petId: this.pet.petId,
       spritesheetPath: this.pet.spritesheetPath,
+      petRoot: this.pet.root,
       scale: this.scale,
       clickThrough: this.clickThrough,
       onDrag: (x, y) => {
