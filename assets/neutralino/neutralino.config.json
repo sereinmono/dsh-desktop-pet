@@ -1,0 +1,25 @@
+{
+  "applicationId": "dsh.desktop.pet",
+  "defaultMode": "window",
+  "documentRoot": "/resources/",
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "enableExtensions": true,
+  "exportAuthInfo": true,
+  "extensions": [{ "id": "petHost" }],
+  "logging": { "enabled": false, "writeToLogFile": false },
+  "modes": {
+    "window": {
+      "title": "desktop-pet",
+      "transparent": true,
+      "borderless": true,
+      "alwaysOnTop": true,
+      "skipTaskbar": true,
+      "exitProcessOnClose": true,
+      "useSavedState": false,
+      "enableInspector": false,
+      "resizable": false
+    }
+  }
+}

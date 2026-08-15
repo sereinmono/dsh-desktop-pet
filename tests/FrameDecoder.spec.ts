@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sliceFrame, scaleFrame, rgbaToPremultipliedBgra } from '../src/renderer/FrameDecoder'
+import { sliceFrame, scaleFrame, rgbaToPremultipliedBgra, frameDirective } from '../src/renderer/FrameDecoder'
 import type { AtlasBuffer } from '../src/renderer/FrameDecoder'
 
 /** Build a minimal atlas where every byte is deterministically set. */
@@ -42,6 +42,27 @@ describe('scaleFrame', () => {
     expect(out.rgba.length).toBe(4 * 4 * 4)
     // Top-left source pixel is red → top-left 2×2 output block is red.
     expect([out.rgba[0], out.rgba[1], out.rgba[2]]).toEqual([255, 0, 0])
+  })
+})
+
+describe('frameDirective', () => {
+  it('carries the idle frame 0 source rectangle', () => {
+    const d = frameDirective('idle', 0)
+    expect(d.pose).toBe('idle')
+    expect(d.frameIndex).toBe(0)
+    expect(d).toMatchObject({ sx: 0, sy: 0, sw: 192, sh: 208 })
+  })
+
+  it('advances the column for idle frame 1', () => {
+    const d = frameDirective('idle', 1)
+    expect(d.sx).toBe(192)
+    expect(d.sy).toBe(0)
+  })
+
+  it('wraps the frame index by the row frame count', () => {
+    // idle has 6 frames; index 6 wraps back to column 0.
+    const d = frameDirective('idle', 6)
+    expect(d.sx).toBe(0)
   })
 })
 

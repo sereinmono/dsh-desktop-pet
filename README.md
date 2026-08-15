@@ -104,11 +104,11 @@ exact `pet.json` and sprite-sheet layout.
 
 | Platform | Status |
 |----------|--------|
-| Windows 11 | ✅ primary target (Win32 layered window via koffi) |
-| Linux (X11 / XWayland) | ✅ (XCB ARGB overlay; **requires a compositor**) |
-| macOS | ❌ not implemented (backend interface is reserved) |
+| Windows 11 | ✅ primary target (transparent overlay via Neutralinojs / WebView2) |
+| Linux (X11 / Wayland) | ✅ (Neutralinojs / WebKitGTK; **requires a compositor + WebKitGTK**) |
+| macOS | ⚠️ renderer is ready; needs a packaged runtime binary + manual verification |
 
-Linux per-pixel transparency needs a running compositor (GNOME/KDE ship one by default; lightweight WMs need picom or similar). On Wayland the overlay runs through XWayland.
+The overlay is rendered by [Neutralinojs](https://neutralino.js.org), which uses the OS webview (WebView2 on Windows, WebKitGTK on Linux, WKWebView on macOS). Linux needs `libwebkit2gtk` (GNOME/KDE ship it; lightweight distros may need to install it) and a running compositor for per-pixel transparency.
 
 ---
 
@@ -125,7 +125,7 @@ All fields are optional and validated with a Schemastery schema (invalid values 
 | `hideWhenIdle` | `false` | Automatically hide the pet when it sleeps (no task), and show it again on activity. |
 | `animationEnabled` | `true` | Run the frame animation (static frame when false). |
 | `idleFrequencySec` | `20` | Seconds (≥8) between randomized idle variations. |
-| `clickThrough` | `false` | Pass pointer events through (Windows only). |
+| `clickThrough` | `false` | Pass pointer events through (not supported by Neutralino; ignored with a warning). |
 | `startSleeping` | `false` | Start in the sleeping state. |
 | `animationSpeed` | `1` | Global speed multiplier (0.25–4). |
 
@@ -170,15 +170,17 @@ integration/  HarnessBridge · capability-detection · event-mapping
 core/         PetStateResolver · PetStateMachine · TaskStateRegistry
         ↓  SemanticState
 renderer/     AnimationController · PetWindow
-        ↓  finished RGBA frames
-renderer/backend/  Win32Backend · X11Backend   (native overlays via koffi)
+        ↓  frame directives (pose + frame index)
+renderer/backend/  NeutralinoBackend   (spawns the Neutralino runtime)
+        ↓  WebSocket (official extension protocol)
+assets/neutralino/  frontend (canvas + sprite slicing)
         ↑
 renderer/codex-pet/  PetContract · PetLoader   (pet.json + sprite sheet)
 ```
 
 - **`HarnessBridge`** is the only module that knows raw harness event names. Everything above it is harness-independent.
 - **Pet core** (`core/`) is a standalone library: testable with no harness, no window, no network.
-- **Backends** are platform-isolated behind `WindowBackend`; the renderer never sees Win32 or X11 details.
+- **Backends** are platform-isolated behind `WindowBackend`; the renderer never sees platform details. The Neutralino backend drives a small frontend that loads the sprite sheet and draws frames — the host only sends `(pose, frameIndex)` directives.
 - **Client half** (`src/client/`) is a separate browser bundle registered through the harness module loader; the host and client halves communicate through the settings namespace.
 
 ### Harness dependencies
@@ -197,19 +199,24 @@ No non-core plugin is required. If an optional service is absent, the pet degrad
 
 | Package | Purpose | Runtime |
 |---------|---------|---------|
-| `koffi` | Win32 + X11 FFI for the overlay window | Node ≥22 |
-| `sharp` | Decode WebP/PNG sprite sheets to RGBA | Node ≥22 |
 | `@deepseek-ai/schemastery` | Config schema validation | Node ≥22 |
 | `clsx` | Class-name helper for the client card (inlined into the browser bundle) | build |
 
 Peer (type-only, not bundled): `@deepseek-ai/cordis`.
+
+The Neutralino runtime binary (and the `@neutralinojs/lib` client library vendored
+into `assets/neutralino/resources/`) are not runtime npm dependencies: the binary
+is downloaded for the current platform by the `postinstall` script into
+`runtime/` (git-ignored), and the client library is copied into the package's
+assets at build time. `sharp` remains a dev dependency only, used by
+`scripts/generate-assets.mjs` to build the placeholder pet.
 
 The client bundle's `react` and `@deepseek-ai/dsh-client-*` imports are externalized:
 they are provided at runtime by the harness module loader, so the plugin does not
 ship them as runtime dependencies (they appear only as dev dependencies for type
 checking and bundling).
 
-**Explicitly avoided**: Electron, Tauri, WebView2/webview, GLFW/SDL/raylib, game engines, GPU/OpenGL, Docker, databases, Redis, any external server, browser automation.
+**Explicitly avoided**: Electron, Tauri, GLFW/SDL/raylib, game engines, GPU/OpenGL, Docker, databases, Redis, any external server, browser automation.
 
 ### Event → state mapping
 
@@ -246,7 +253,7 @@ npm run build          # tsdown bundle (host + client)
 npm run gen:assets     # regenerate the bundled text pet
 ```
 
-The pet core is tested without a harness or a display. The native overlay backends require a real desktop session and are **not** exercised by the headless test suite — they need manual verification on Windows/Linux.
+The pet core is tested without a harness or a display. The Neutralino overlay requires a real desktop session and is **not** exercised by the headless test suite — it needs manual verification on Windows/Linux. The frontend's pure layout math is unit-tested on the host.
 
 ---
 
@@ -282,10 +289,12 @@ Actions → Publish → Run workflow (the tag must still be on `master`).
 
 ## Known limitations
 
-- **Linux transparency requires a compositor**; on Wayland the pet runs as an XWayland client (no native wlr-layer-shell).
-- **macOS is not implemented**.
+- **Linux needs WebKitGTK + a compositor**; lightweight distros may need `libwebkit2gtk-4.0` installed manually.
+- **macOS is not yet verified** — the renderer is platform-neutral and the runtime binary is packaged by the installer, but it has not been manually tested.
+- **Click-through is not supported**: Neutralino transparent windows have no per-window pointer-passthrough API, so `clickThrough` is ignored (with a warning).
+- **Transparent-window dead zone** (Windows): the bottom ~20% of a Neutralino transparent window does not receive pointer input (upstream [neutralinojs#1482](https://github.com/neutralinojs/neutralinojs/issues/1482)). The pet is drawn in the top 75% of the window to keep drag/hover/click fully working.
 - The bundled placeholder is the `text` test pet only — original SVG-drawn text, with no OpenAI/Codex/DeepSeek character artwork or trademarks.
-- Native window rendering (frameless/transparent/topmost/drag) has not been exercised by automated CI and needs a manual check on a real desktop.
+- Overlay rendering (frameless/transparent/topmost/drag) has not been exercised by automated CI and needs a manual check on a real desktop.
 
 ---
 

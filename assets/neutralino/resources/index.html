@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>desktop-pet</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #pet { display: block; }
+  #menu {
+    position: fixed;
+    display: none;
+    z-index: 10;
+    min-width: 120px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    font: 13px/1.4 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #222;
+    user-select: none;
+  }
+  #menu button {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  #menu button:hover { background: rgba(0, 0, 0, 0.07); }
+</style>
+</head>
+<body>
+<canvas id="pet"></canvas>
+<div id="menu"><button id="menu-close">Close pet</button></div>
+
+<script src="neutralino.js"></script>
+<script src="pet-render.js"></script>
+<script>
+(() => {
+  const canvas = document.getElementById('pet')
+  const ctx = canvas.getContext('2d')
+  const menu = document.getElementById('menu')
+  const menuClose = document.getElementById('menu-close')
+
+  const atlas = new Image()
+  let atlasReady = false
+
+  // Window identity + geometry, provided by the host in `pet.init`.
+  let nlWinId = null
+  let layout = layoutForScale(1)
+  let spriteUrl = null
+  let hoverState = false
+  let dragging = false
+  let dragStart = null
+  let moveSeq = 0
+
+  function applyCanvasSize() {
+    canvas.width = layout.width
+    canvas.height = layout.height
+    canvas.style.width = layout.width + 'px'
+    canvas.style.height = layout.height + 'px'
+    ctx.imageSmoothingEnabled = false
+  }
+
+  function drawCurrent() {
+    if (!atlasReady) return
+    const r = sourceRect(currentDirective)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(atlas, r.sx, r.sy, r.sw, r.sh, layout.petX, layout.petY, layout.petW, layout.petH)
+  }
+
+  let currentDirective = { pose: 'idle', frameIndex: 0, sx: 0, sy: 0 }
+
+  atlas.addEventListener('load', () => {
+    atlasReady = true
+    drawCurrent()
+    Neutralino.events.broadcast('pet.uiReady', { atlasWidth: atlas.naturalWidth, atlasHeight: atlas.naturalHeight })
+  })
+  atlas.addEventListener('error', () => {
+    Neutralino.events.broadcast('pet.uiError', { message: 'spritesheet failed to load: ' + spriteUrl })
+  })
+
+  function hideMenu() { menu.style.display = 'none' }
+
+  // --- Host -> UI directives -------------------------------------------------
+
+  // Announce readiness immediately; the client library queues broadcasts until
+  // its WebSocket connects, and the host may also poll via `pet.handshakeQuery`.
+  function announceReady() {
+    Neutralino.events.broadcast('pet.frontendReady', { t: Date.now() })
+  }
+  Neutralino.events.on('pet.handshakeQuery', announceReady)
+  announceReady()
+
+  Neutralino.events.on('pet.init', (evt) => {
+    const d = evt.detail || {}
+    nlWinId = d.windowId ?? null
+    if (Number.isFinite(d.scale)) layout = layoutForScale(d.scale)
+    applyCanvasSize()
+    if (d.spritesheetUrl && d.spritesheetUrl !== spriteUrl) {
+      spriteUrl = d.spritesheetUrl
+      atlasReady = false
+      atlas.src = spriteUrl
+    }
+    // Position is set by the host after creation; mirror it for drag math.
+    if (Number.isFinite(d.x) && Number.isFinite(d.y)) winPos = { x: d.x, y: d.y }
+  })
+
+  Neutralino.events.on('pet.frame', (evt) => {
+    currentDirective = evt.detail || currentDirective
+    drawCurrent()
+  })
+
+  Neutralino.events.on('pet.atlas', (evt) => {
+    const d = evt.detail || {}
+    if (d.spritesheetUrl && d.spritesheetUrl !== spriteUrl) {
+      spriteUrl = d.spritesheetUrl
+      atlasReady = false
+      atlas.src = spriteUrl
+    }
+  })
+
+  // --- Pointer interaction ---------------------------------------------------
+
+  let winPos = { x: 0, y: 0 }
+
+  function setHover(state) {
+    if (hoverState === state) return
+    hoverState = state
+    Neutralino.events.broadcast(state ? 'pet.hover' : 'pet.unhover', { t: Date.now() })
+  }
+
+  canvas.addEventListener('pointerenter', () => setHover(true))
+  canvas.addEventListener('pointerleave', () => {
+    setHover(false)
+    if (dragging) endDrag(true)
+  })
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return
+    hideMenu()
+    dragging = true
+    dragStart = { px: e.screenX, py: e.screenY, wx: winPos.x, wy: winPos.y, moved: false }
+    canvas.setPointerCapture(e.pointerId)
+  })
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging || !dragStart) return
+    // Pointer deltas are logical CSS pixels; window.move takes physical
+    // pixels, so scale by devicePixelRatio (verified on 150% DPI displays).
+    const dpr = window.devicePixelRatio || 1
+    const dx = (e.screenX - dragStart.px) * dpr
+    const dy = (e.screenY - dragStart.py) * dpr
+    if (!dragStart.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+    dragStart.moved = true
+
+    const target = clampDragTarget(dragStart.wx + dx, dragStart.wy + dy, layout, screen.width * dpr, screen.height * dpr)
+    winPos = target
+    const seq = ++moveSeq
+    // Fire-and-forget; only the newest move matters.
+    Neutralino.window.move(target.x, target.y).catch(() => {})
+    const dir = dx < 0 ? 'left' : 'right'
+    Neutralino.events.broadcast('pet.dragMove', { direction: dir, seq })
+  })
+
+  function endDrag(cancelled) {
+    if (!dragging) return
+    dragging = false
+    const moved = dragStart?.moved ?? false
+    dragStart = null
+    moveSeq = 0
+    if (cancelled) return
+    Neutralino.events.broadcast('pet.dragEnd', {})
+    if (moved) Neutralino.events.broadcast('pet.drag', { x: winPos.x, y: winPos.y })
+  }
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (e.button !== 0) return
+    endDrag(false)
+  })
+
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    menu.style.left = Math.min(e.clientX, Math.max(0, layout.width - 130)) + 'px'
+    menu.style.top = Math.min(e.clientY, Math.max(0, layout.height - 40)) + 'px'
+    menu.style.display = 'block'
+  })
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.contains(e.target)) hideMenu()
+  })
+  menuClose.addEventListener('click', () => {
+    hideMenu()
+    Neutralino.events.broadcast('pet.close', {})
+  })
+
+  // Window focus tracking (kept minimal; the host decides semantics).
+  Neutralino.events.on('windowFocus', () => setHover(true))
+  Neutralino.events.on('windowBlur', () => setHover(false))
+
+  applyCanvasSize()
+  Neutralino.init().catch(() => {})
+})()
+</script>
+</body>
+</html>

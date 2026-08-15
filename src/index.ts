@@ -21,7 +21,7 @@ import { PetStateMachine } from './core/PetStateMachine'
 import type { NormalizedEvent, SemanticState } from './core/types'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
 import { loadPosition, savePosition } from './persistence'
-import { loadPetAtlas, scanPets } from './pets'
+import { resolvePetManifest, scanPets } from './pets'
 import { installPetSettings, type PetSettingsHandle, type PetSettingsRegistrar, type PetSettingsSnapshot } from './settings'
 import { PetWindow } from './renderer/PetWindow'
 import { selectBackend } from './renderer/backend/selectBackend'
@@ -111,9 +111,9 @@ export function apply(ctx: Context, config: PetConfig): void {
         if (petKey !== loadedPetKey) {
           loadedPetKey = petKey
           try {
-            const atlas = await loadPetAtlas(petId)
+            const pet = await resolvePetManifest(petId)
             if (disposed || seq !== reconcileSeq) return
-            await window.loadPet(atlas)
+            await window.loadPet(pet)
           } catch (error) {
             log.warn('failed to switch pet; keeping current: %s', (error as Error)?.message ?? String(error))
           }
@@ -123,9 +123,9 @@ export function apply(ctx: Context, config: PetConfig): void {
 
       // Create the window with the current resolved settings.
       loadedPetKey = petKey
-      let atlas
+      let pet
       try {
-        atlas = await loadPetAtlas(petId)
+        pet = await resolvePetManifest(petId)
       } catch (error) {
         log.warn('failed to load pet assets; renderer disabled: %s', (error as Error)?.message ?? String(error))
         return
@@ -141,7 +141,7 @@ export function apply(ctx: Context, config: PetConfig): void {
       try {
         window = new PetWindow({
           backend,
-          atlas,
+          pet,
           scale: settings.petScale,
           alwaysOnTop: config.alwaysOnTop,
           animationEnabled: config.animationEnabled,

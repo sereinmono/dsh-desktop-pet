@@ -88,11 +88,11 @@ dsh --profile <name>
 
 | 平台 | 状态 |
 |----------|--------|
-| Windows 11 | ✅ 首要目标（基于 koffi 的 Win32 分层窗口）|
-| Linux（X11 / XWayland）| ✅（XCB ARGB 悬浮层；**需要合成器**）|
-| macOS | ❌ 未实现（后端接口已预留）|
+| Windows 11 | ✅ 首要目标（基于 Neutralinojs / WebView2 的透明悬浮层）|
+| Linux（X11 / Wayland）| ✅（Neutralinojs / WebKitGTK；**需要合成器 + WebKitGTK**）|
+| macOS | ⚠️ 渲染层已就绪；待打包运行时二进制 + 人工验证 |
 
-Linux 的逐像素透明需要一个运行中的合成器（GNOME/KDE 默认自带；轻量 WM 需要 picom 之类）。在 Wayland 上悬浮层通过 XWayland 运行。
+悬浮层由 [Neutralinojs](https://neutralino.js.org) 渲染，它使用系统 webview（Windows 为 WebView2，Linux 为 WebKitGTK，macOS 为 WKWebView）。Linux 需要 `libwebkit2gtk`（GNOME/KDE 自带；轻量发行版可能需手动安装）以及一个运行中的合成器来提供逐像素透明。
 
 ---
 
@@ -109,7 +109,7 @@ Linux 的逐像素透明需要一个运行中的合成器（GNOME/KDE 默认自�
 | `hideWhenIdle` | `false` | 宠物睡眠（无任务）时自动隐藏，有任务时重新显示。 |
 | `animationEnabled` | `true` | 运行动画（为 false 时显示静态帧）。 |
 | `idleFrequencySec` | `20` | 随机空闲动作间隔秒数（≥8）。 |
-| `clickThrough` | `false` | 让指针事件穿透（仅 Windows）。 |
+| `clickThrough` | `false` | 让指针事件穿透（Neutralino 不支持，加载时告警并忽略）。 |
 | `startSleeping` | `false` | 以睡眠状态启动。 |
 | `animationSpeed` | `1` | 全局速度倍率（0.25–4）。 |
 
@@ -154,15 +154,17 @@ integration/  HarnessBridge · capability-detection · event-mapping
 core/         PetStateResolver · PetStateMachine · TaskStateRegistry
         ↓  SemanticState
 renderer/     AnimationController · PetWindow
-        ↓  最终 RGBA 帧
-renderer/backend/  Win32Backend · X11Backend   （基于 koffi 的原生悬浮层）
+        ↓  帧指令（姿态 + 帧号）
+renderer/backend/  NeutralinoBackend   （spawn Neutralino 运行时）
+        ↓  WebSocket（官方 extension 协议）
+assets/neutralino/  前端（canvas + 精灵图切片）
         ↑
 renderer/codex-pet/  PetContract · PetLoader   （pet.json + 精灵图）
 ```
 
 - **`HarnessBridge`** 是唯一了解原始 harness 事件名的模块，其上的所有内容都与 harness 无关。
 - **宠物核心**（`core/`）是一个独立库：无需 harness、无需窗口、无需网络即可测试。
-- **后端** 在 `WindowBackend` 之后做平台隔离；渲染器永远看不到 Win32 或 X11 细节。
+- **后端** 在 `WindowBackend` 之后做平台隔离；渲染器永远看不到平台细节。Neutralino 后端驱动一个加载精灵图并绘制帧的小前端——宿主只发送 `(姿态, 帧号)` 指令。
 - **客户端半**（`src/client/`）是一个单独的浏览器 bundle，通过 harness 模块加载器注册；宿主半与客户端半通过 settings namespace 通信。
 
 ### Harness 依赖
@@ -181,16 +183,16 @@ renderer/codex-pet/  PetContract · PetLoader   （pet.json + 精灵图）
 
 | 包 | 用途 | 运行时 |
 |---------|---------|---------|
-| `koffi` | 悬浮窗口的 Win32 + X11 FFI | Node ≥22 |
-| `sharp` | 把 WebP/PNG 精灵图解码为 RGBA | Node ≥22 |
 | `@deepseek-ai/schemastery` | 配置 schema 校验 | Node ≥22 |
 | `clsx` | 客户端卡片的类名辅助（内联进浏览器 bundle）| 构建期 |
 
 Peer（仅类型、不打包）：`@deepseek-ai/cordis`。
 
+Neutralino 运行时二进制（以及 vendored 进 `assets/neutralino/resources/` 的 `@neutralinojs/lib` 客户端库）**不是**运行时 npm 依赖：二进制由 `postinstall` 脚本按当前平台下载到 `runtime/`（git 忽略），客户端库在构建期复制进包内 assets。`sharp` 仅作为 dev 依赖，供 `scripts/generate-assets.mjs` 构建占位宠物使用。
+
 客户端 bundle 里的 `react` 和 `@deepseek-ai/dsh-client-*` 导入都是外部化的：它们由 harness 模块加载器在运行时提供，因此插件不会把它们作为运行时依赖发布（它们只作为 dev 依赖用于类型检查和打包）。
 
-**明确避免**：Electron、Tauri、WebView2/webview、GLFW/SDL/raylib、游戏引擎、GPU/OpenGL、Docker、数据库、Redis、任何外部服务器、浏览器自动化。
+**明确避免**：Electron、Tauri、GLFW/SDL/raylib、游戏引擎、GPU/OpenGL、Docker、数据库、Redis、任何外部服务器、浏览器自动化。
 
 ### 事件 → 状态映射
 
@@ -227,7 +229,7 @@ npm run build           # tsdown 打包（宿主 + 客户端）
 npm run gen:assets      # 重新生成内置的 text 宠物
 ```
 
-宠物核心在无 harness、无显示环境的情况下测试。原生悬浮层后端需要真实桌面会话，**不**在无头测试套件中运行——需在 Windows/Linux 上人工验证。
+宠物核心在无 harness、无显示环境的情况下测试。Neutralino 悬浮层需要真实桌面会话，**不**在无头测试套件中运行——需在 Windows/Linux 上人工验证。前端纯布局数学在宿主侧做单元测试。
 
 ---
 
@@ -253,10 +255,12 @@ git push origin master --tags
 
 ## 已知限制
 
-- **Linux 透明需要合成器**；在 Wayland 上宠物作为 XWayland 客户端运行（无原生 wlr-layer-shell）。
-- **macOS 未实现**。
+- **Linux 需要 WebKitGTK + 合成器**；轻量发行版可能需手动安装 `libwebkit2gtk-4.0`。
+- **macOS 尚未验证** —— 渲染层是平台无关的，安装器也已打包运行时二进制，但尚未人工测试。
+- **点击穿透不受支持**：Neutralino 透明窗口没有逐窗口的指针穿透 API，因此 `clickThrough` 被忽略（告警提示）。
+- **透明窗口死区**（Windows）：Neutralino 透明窗口底部约 20% 区域收不到指针输入（上游 [neutralinojs#1482](https://github.com/neutralinojs/neutralinojs/issues/1482)）。宠物被绘制在窗口顶部 75% 区域内，以保证拖动/悬停/点击完全可用。
 - 内置占位宠物只有 `text` 测试宠物——纯 SVG 绘制的文字，不含 OpenAI/Codex/DeepSeek 的角色美术或商标。
-- 原生窗口渲染（无边框/透明/置顶/拖动）尚未被自动化 CI 覆盖，需在真实桌面上人工检查。
+- 悬浮层渲染（无边框/透明/置顶/拖动）尚未被自动化 CI 覆盖，需在真实桌面上人工检查。
 
 ---
 

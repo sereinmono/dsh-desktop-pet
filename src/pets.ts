@@ -3,15 +3,13 @@
  * and loads a pet directory into a decoded atlas.
  */
 
-import { fileURLToPath } from 'node:url'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { PetCatalogEntry } from './config'
-import { loadPet } from './renderer/codex-pet/PetLoader'
-import type { LoadedPet } from './renderer/codex-pet/PetLoader'
-import type { AtlasBuffer } from './renderer/FrameDecoder'
+import { PETS_DIR } from './paths'
 
-const ASSETS_DIR = fileURLToPath(new URL('../assets/pets/', import.meta.url))
+/** Directory containing the bundled pet directories (`assets/pets/`). */
+const ASSETS_DIR = PETS_DIR
 
 /** Fallback entry used when no pet directory can be found on disk. */
 const FALLBACK_ENTRY: PetCatalogEntry = { id: 'text', displayName: 'Text (test)' }
@@ -58,12 +56,27 @@ export function scanPets(directory: string = ASSETS_DIR): PetCatalogEntry[] {
   return entries
 }
 
-function toAtlas(loaded: LoadedPet): AtlasBuffer {
-  return { width: loaded.atlasWidth, height: loaded.atlasHeight, rgba: loaded.rgba }
+/** The manifest fields the renderer needs to point the frontend at a sprite sheet. */
+export interface PetManifestRef {
+  petId: string
+  /** Manifest `spritesheetPath`, relative to the pet directory. */
+  spritesheetPath: string
 }
 
-/** Load a pet by id (a directory name under `assets/pets/`) into an atlas. */
-export async function loadPetAtlas(petId: string): Promise<AtlasBuffer> {
-  const loaded = await loadPet({ directory: join(ASSETS_DIR, petId) })
-  return toAtlas(loaded)
+/**
+ * Resolve a pet by id (a directory name under `assets/pets/`) into its sprite
+ * sheet reference. No pixel decoding happens here — the frontend loads the
+ * sheet itself. Throws if the directory or manifest is unreadable.
+ */
+export async function resolvePetManifest(petId: string): Promise<PetManifestRef> {
+  const directory = join(ASSETS_DIR, petId)
+  const raw = readFileSync(join(directory, 'pet.json'), 'utf8')
+  const manifest = JSON.parse(raw) as Record<string, unknown>
+  if (typeof manifest.id !== 'string' || manifest.id.length === 0) {
+    throw new Error(`pet.json in "${petId}" is missing a string "id" field`)
+  }
+  if (typeof manifest.spritesheetPath !== 'string' || manifest.spritesheetPath.length === 0) {
+    throw new Error(`pet.json in "${petId}" is missing a string "spritesheetPath" field`)
+  }
+  return { petId, spritesheetPath: manifest.spritesheetPath }
 }
