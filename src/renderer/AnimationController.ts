@@ -1,15 +1,16 @@
 /**
  * Data-driven frame scheduler.
  *
- * Given a loaded atlas and a scale, it plays the current Codex animation
- * state's frames at the contract's per-frame durations and emits finished
- * frames via an `onFrame` callback. The timer runs only while playing; when
- * stopped, no work is scheduled (near-zero idle CPU).
+ * Owns the current Codex animation state and its frame index, and emits a
+ * render directive per animation step via `onFrame`. The frontend does the
+ * actual pixel drawing; this controller only knows the sprite-sheet contract
+ * timings. The timer runs only while playing; when stopped, no work is
+ * scheduled (near-zero idle CPU).
  */
 
 import type { CodexPetState } from '../core/types'
 import { animationRowFor } from './codex-pet/PetContract'
-import { scaleFrame, sliceFrame, type AtlasBuffer, type PetFrame } from './FrameDecoder'
+import { frameDirective, type FrameDirective } from './FrameDecoder'
 
 export interface AnimationClock {
   now(): number
@@ -24,17 +25,13 @@ const realClock: AnimationClock = {
 }
 
 export interface AnimationControllerOptions {
-  atlas: AtlasBuffer
-  scale: number
   clock?: AnimationClock
-  onFrame?: (frame: PetFrame) => void
+  onFrame?: (directive: FrameDirective) => void
 }
 
 export class AnimationController {
   private readonly clock: AnimationClock
-  private readonly atlas: AtlasBuffer
-  private readonly scale: number
-  private readonly onFrame: ((frame: PetFrame) => void) | undefined
+  private readonly onFrame: ((directive: FrameDirective) => void) | undefined
 
   private state: CodexPetState = 'idle'
   private frameIndex = 0
@@ -43,10 +40,8 @@ export class AnimationController {
   private resumeState: CodexPetState | undefined
   private disposed = false
 
-  constructor(options: AnimationControllerOptions) {
+  constructor(options: AnimationControllerOptions = {}) {
     this.clock = options.clock ?? realClock
-    this.atlas = options.atlas
-    this.scale = options.scale
     this.onFrame = options.onFrame
   }
 
@@ -88,9 +83,7 @@ export class AnimationController {
 
   private emitCurrent(): void {
     try {
-      const frame = sliceFrame(this.atlas, this.state, this.frameIndex)
-      const scaled = this.scale === 1 ? frame : scaleFrame(frame, this.scale)
-      this.onFrame?.(scaled)
+      this.onFrame?.(frameDirective(this.state, this.frameIndex))
     } catch (error) {
       // A bad frame must not kill the animation loop.
       if (typeof console !== 'undefined') console.warn('[desktop-pet] frame error:', (error as Error)?.message)

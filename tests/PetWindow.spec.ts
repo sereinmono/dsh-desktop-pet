@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PetWindow } from '../src/renderer/PetWindow'
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from '../src/renderer/backend/WindowBackend'
-import type { PetFrame } from '../src/renderer/FrameDecoder'
+import type { FrameDirective } from '../src/renderer/FrameDecoder'
 
 function makeBackend() {
   const handles: FakeHandle[] = []
@@ -21,7 +21,7 @@ class FakeHandle implements WindowHandle {
   shown = true
   destroyed = false
   constructor(readonly opts: WindowBackendOptions) {}
-  present(_frame: PetFrame): void {}
+  present(_directive: FrameDirective): void {}
   move(): void {}
   setAlwaysOnTop(): void {}
   show(): void { this.shown = true }
@@ -29,12 +29,12 @@ class FakeHandle implements WindowHandle {
   destroy(): void { this.destroyed = true }
 }
 
-const atlas = { width: 1536, height: 1872, rgba: new Uint8Array(1536 * 1872 * 4) }
+const pet = { petId: 'text', spritesheetPath: 'spritesheet.webp' }
 
 describe('PetWindow live settings', () => {
   it('setVisible shows/hides without destroying', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
     expect(handles[0].shown).toBe(true)
 
@@ -49,7 +49,7 @@ describe('PetWindow live settings', () => {
 
   it('setScale rebuilds the window at the new size', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
     expect(handles).toHaveLength(1)
     expect(handles[0].opts.width).toBe(192)
@@ -61,13 +61,13 @@ describe('PetWindow live settings', () => {
     await w.destroy()
   })
 
-  it('loadPet rebuilds the window with the new atlas', async () => {
+  it('loadPet rebuilds the window with the new pet', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
 
-    const atlas2 = { width: 1536, height: 1872, rgba: new Uint8Array(1536 * 1872 * 4).fill(1) }
-    await w.loadPet(atlas2)
+    const pet2 = { petId: 'dog', spritesheetPath: 'sheet.webp' }
+    await w.loadPet(pet2)
     expect(handles).toHaveLength(2)
     expect(handles[0].destroyed).toBe(true)
     await w.destroy()
@@ -77,7 +77,7 @@ describe('PetWindow live settings', () => {
 describe('PetWindow drag animations', () => {
   it('plays running-left / running-right on drag move', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
     await w.open()
     expect(w.currentPose).toBe('idle')
 
@@ -91,7 +91,7 @@ describe('PetWindow drag animations', () => {
 
   it('returns to the semantic pose on drag end', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
     await w.open()
     w.setState('THINKING')
     expect(w.currentPose).toBe('running')
@@ -106,7 +106,7 @@ describe('PetWindow drag animations', () => {
 
   it('defers a semantic state change until drag ends', async () => {
     const { backend, handles } = makeBackend()
-    const w = new PetWindow({ backend, atlas, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
+    const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: true, idleFrequencySec: 20 })
     await w.open()
 
     handles[0].opts.onDragMove?.('right')

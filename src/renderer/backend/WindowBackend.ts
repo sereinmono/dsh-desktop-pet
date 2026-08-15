@@ -2,12 +2,13 @@
  * The window backend contract.
  *
  * A backend owns a single transparent, frameless, always-on-top overlay and
- * presents finished RGBA frames into it. Platform-specific implementations
- * (`Win32Backend`, `X11Backend`) keep every native detail behind this
- * interface; the renderer only knows {@link WindowBackend}.
+ * presents finished frames into it. The Neutralino backend receives render
+ * directives (not pixels); the koffi backends have been retired. Platform
+ * details stay behind this interface; the renderer only knows
+ * {@link WindowBackend}.
  */
 
-import type { PetFrame } from '../FrameDecoder'
+import type { FrameDirective } from '../FrameDecoder'
 
 export interface WindowBackendOptions {
   width: number
@@ -15,7 +16,13 @@ export interface WindowBackendOptions {
   x: number
   y: number
   alwaysOnTop: boolean
-  /** When true the window ignores pointer input (Windows only). */
+  /** Pet directory id (for locating the sprite sheet URL). */
+  petId: string
+  /** Manifest `spritesheetPath`, relative to the pet directory. */
+  spritesheetPath: string
+  /** Display scale applied to the 192×208 cell. */
+  scale: number
+  /** When true the window ignores pointer input (unsupported by Neutralino). */
   clickThrough?: boolean
   /** Invoked after the user drags the window to a new position. */
   onDrag?: (x: number, y: number) => void
@@ -32,8 +39,8 @@ export interface WindowBackendOptions {
 }
 
 export interface WindowHandle {
-  /** Present a full-window RGBA frame (size must match the created window). */
-  present(frame: PetFrame): void
+  /** Present a render directive (the frontend draws the corresponding cell). */
+  present(directive: FrameDirective): void
   move(x: number, y: number): void
   setAlwaysOnTop(value: boolean): void
   show(): void
@@ -46,8 +53,8 @@ export interface WindowBackend {
   readonly name: string
   /** Whether this backend can run in the current process/platform. */
   isSupported(): boolean
-  /** Create and map the overlay window. Resolves once it is visible. */
+  /** Create and map the overlay window. Resolves once it is ready. */
   create(options: WindowBackendOptions): Promise<WindowHandle>
 }
 
-export type { PetFrame }
+export type { FrameDirective }

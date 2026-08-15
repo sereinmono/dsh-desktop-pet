@@ -19,6 +19,7 @@
     "lib",
     "assets",
     "docs",
+    "scripts/install-neutralino.mjs",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md"
@@ -40,6 +41,7 @@
   },
   "scripts": {
     "prepublishOnly": "npm run build",
+    "postinstall": "node scripts/install-neutralino.mjs",
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
@@ -48,9 +50,7 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "clsx": "^2.0.0",
-    "koffi": "^3.1.0",
-    "sharp": "^0.35.3"
+    "clsx": "^2.0.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
@@ -64,9 +64,11 @@
     "@deepseek-ai/dsh-client-ui-settings": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.0.1-rc.3",
     "@deepseek-ai/dsh-client-ui-slots": "^0.0.1-rc.1",
+    "@neutralinojs/lib": "^6.9.0",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "lightningcss": "^1.33.0",
+    "sharp": "^0.35.3",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
     "unrun": "^0.3.1",

@@ -1,13 +1,14 @@
 /**
  * The renderer's orchestrator: owns a {@link WindowBackend} handle and an
  * {@link AnimationController}, maps semantic states to Codex poses, and feeds
- * finished frames into the window.
+ * render directives into the frontend.
  *
- * Idle "alive" behavior lives here: when idle, a low-frequency randomized
- * transient (a wave or hop) plays so the pet never looks frozen, without
+ * The frontend draws the sprite; this class only drives which pose/frame is
+ * active. Idle "alive" behavior lives here: when idle, a low-frequency
+ * randomized transient (a wave) plays so the pet never looks frozen, without
  * driving aggressive continuous animation.
  *
- * Live settings changes (scale / pet atlas / visibility) rebuild the window
+ * Live settings changes (scale / pet swap / visibility) rebuild the window
  * in place: the backend handle and animation controller are torn down and
  * recreated, while the current position is preserved.
  */
@@ -15,16 +16,23 @@
 import type { CodexPetState, SemanticState } from '../core/types'
 import { SEMANTIC_TO_CODEX } from '../core/types'
 import { AnimationController, type AnimationClock } from './AnimationController'
-import type { AtlasBuffer } from './FrameDecoder'
+import type { FrameDirective } from './FrameDecoder'
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from './backend/WindowBackend'
+
+/** A pet the window can display: its catalog id and sprite-sheet file. */
+export interface PetWindowPet {
+  petId: string
+  /** Manifest `spritesheetPath`, relative to the pet directory. */
+  spritesheetPath: string
+}
 
 export interface PetWindowOptions {
   backend: WindowBackend
-  atlas: AtlasBuffer
+  pet: PetWindowPet
   scale: number
   alwaysOnTop: boolean
   animationEnabled: boolean
-  /** Seconds between idle variations (transient wave/hop). */
+  /** Seconds between idle variations (transient wave). */
   idleFrequencySec: number
   position?: { x: number; y: number } | null
   clickThrough?: boolean
@@ -49,6 +57,21 @@ const DEFAULT_POSITION = { x: 40, y: 40 } as const
 // `jumping` is reserved for pointer-hover; idle variations use only `waving`.
 const IDLE_TRANSIENTS: readonly CodexPetState[] = ['waving']
 
+/**
+ * Fraction of the window height below the pet that stays empty. Neutralino
+ * transparent windows on Windows have a dead zone in the bottom ~20% where
+ * pointer input never arrives (neutralinojs#1482); keeping the pet in the top
+ * 75% keeps drag/hover/click working.
+ */
+const BOTTOM_PAD_FRAC = 0.25
+
+/** Window size for a scale, matching the frontend's `layoutForScale`. */
+function windowSizeForScale(scale: number): { width: number; height: number } {
+  const petW = Math.max(1, Math.round(BASE_WIDTH * scale))
+  const petH = Math.max(1, Math.round(BASE_HEIGHT * scale))
+  return { width: petW, height: Math.max(petH + 1, Math.round(petH / (1 - BOTTOM_PAD_FRAC))) }
+}
+
 export class PetWindow {
   private readonly backend: WindowBackend
   private readonly animationEnabled: boolean
@@ -63,7 +86,7 @@ export class PetWindow {
   private readonly onUnhover: (() => void) | undefined
   private readonly onClose: (() => void) | undefined
 
-  private atlas: AtlasBuffer
+  private pet: PetWindowPet
   private scale: number
   private currentX: number
   private currentY: number
@@ -80,7 +103,7 @@ export class PetWindow {
 
   constructor(options: PetWindowOptions) {
     this.backend = options.backend
-    this.atlas = options.atlas
+    this.pet = options.pet
     this.scale = options.scale
     this.animationEnabled = options.animationEnabled
     this.idleFrequencySec = options.idleFrequencySec
@@ -104,8 +127,7 @@ export class PetWindow {
     if (this.destroyed || this.opened) return
     this.opened = true
 
-    const width = Math.max(1, Math.round(BASE_WIDTH * this.scale))
-    const height = Math.max(1, Math.round(BASE_HEIGHT * this.scale))
+    const { width, height } = windowSizeForScale(this.scale)
 
     const opts: WindowBackendOptions = {
       width,
@@ -113,6 +135,9 @@ export class PetWindow {
       x: this.currentX,
       y: this.currentY,
       alwaysOnTop: true,
+      petId: this.pet.petId,
+      spritesheetPath: this.pet.spritesheetPath,
+      scale: this.scale,
       clickThrough: this.clickThrough,
       onDrag: (x, y) => {
         this.currentX = x
@@ -138,10 +163,8 @@ export class PetWindow {
     this.handle = await this.backend.create(opts)
 
     this.controller = new AnimationController({
-      atlas: this.atlas,
-      scale: this.scale,
       clock: this.clock,
-      onFrame: (frame) => this.present(frame),
+      onFrame: (directive) => this.present(directive),
     })
     if (this.animationEnabled) this.controller.start()
     this.applyState(this.semantic)
@@ -193,10 +216,10 @@ export class PetWindow {
     await this.recreate()
   }
 
-  /** Swap the sprite atlas (a different pet) by rebuilding the window. */
-  async loadPet(atlas: AtlasBuffer): Promise<void> {
-    if (this.destroyed || atlas === this.atlas) return
-    this.atlas = atlas
+  /** Swap the displayed pet by rebuilding the window. */
+  async loadPet(pet: PetWindowPet): Promise<void> {
+    if (this.destroyed || (pet.petId === this.pet.petId && pet.spritesheetPath === this.pet.spritesheetPath)) return
+    this.pet = pet
     await this.recreate()
   }
 
@@ -217,8 +240,8 @@ export class PetWindow {
   /** Play the hover reaction (`jumping`) once, then return to the current state. */
   playJump(): void {
     if (this.destroyed || !this.controller) return
-    // WM_NCMOUSEMOVE fires continuously while the pointer moves over the pet;
-    // only react on the hover *edge*, otherwise the transient never completes.
+    // Pointer enter can fire repeatedly; only react on the hover edge,
+    // otherwise the transient never completes.
     if (this.hovered) return
     this.hovered = true
     this.controller.playTransient('jumping', SEMANTIC_TO_CODEX[this.semantic] ?? 'idle')
@@ -254,13 +277,13 @@ export class PetWindow {
     }
   }
 
-  private present(frame: import('./FrameDecoder').PetFrame): void {
+  private present(directive: FrameDirective): void {
     if (this.destroyed || !this.handle) return
     try {
-      this.handle.present(frame)
+      this.handle.present(directive)
     } catch {
-      // A failed frame must not propagate into the harness. Swallow and keep
-      // the loop; the next frame may succeed.
+      // A failed directive must not propagate into the harness. Swallow and
+      // keep the loop; the next frame may succeed.
     }
   }
 

@@ -1,14 +1,14 @@
 /**
  * Backend selection. The renderer asks for a backend without knowing the OS;
- * this module picks the first supported one and, if none exists, returns
- * `undefined` so the plugin can degrade gracefully (no window, still loaded).
+ * this module returns the Neutralino backend when its runtime binary is
+ * present, otherwise `undefined` so the plugin can degrade gracefully
+ * (no window, still loaded).
  */
 
-import { Win32Backend } from './Win32Backend'
-import { X11Backend } from './X11Backend'
+import { NeutralinoBackend } from './NeutralinoBackend'
 import type { WindowBackend } from './WindowBackend'
 
-const BACKENDS: readonly WindowBackend[] = [new Win32Backend(), new X11Backend()]
+const BACKENDS: readonly WindowBackend[] = [new NeutralinoBackend()]
 
 export function selectBackend(): WindowBackend | undefined {
   return BACKENDS.find(backend => {

@@ -24,6 +24,33 @@ export interface PetFrame {
 }
 
 /**
+ * A render instruction sent to the frontend instead of raw pixels.
+ *
+ * The frontend loads the pet's sprite sheet itself and draws the cell
+ * identified by `(sx, sy, sw, sh)`; the host only owns timing and state.
+ * `pose` + `frameIndex` are retained for diagnostics.
+ */
+export interface FrameDirective {
+  pose: CodexPetState
+  frameIndex: number
+  /** Source rectangle inside the sprite sheet (unscaled contract pixels). */
+  sx: number
+  sy: number
+  sw: number
+  sh: number
+}
+
+/**
+ * Derive the render directive for a given pose and frame index. Pure and
+ * unit-testable; mirrors {@link sliceFrame} but carries coordinates instead
+ * of copied pixels.
+ */
+export function frameDirective(state: CodexPetState, index: number): FrameDirective {
+  const rect = frameRect(state, index)
+  return { pose: state, frameIndex: index, sx: rect.x, sy: rect.y, sw: rect.width, sh: rect.height }
+}
+
+/**
  * Extract one cell (a single animation frame) from an atlas.
  */
 export function sliceFrame(atlas: AtlasBuffer, state: CodexPetState, index: number): PetFrame {
