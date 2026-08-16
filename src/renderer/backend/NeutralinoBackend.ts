@@ -370,10 +370,16 @@ export class NeutralinoBackend implements WindowBackend {
       },
     }
 
-    // Surface unexpected runtime death as a close request so the host can
-    // react (the pet window is gone either way).
+    // A child exit outside of destroy() means the runtime died unexpectedly
+    // (crash, window closed externally, host killed). It must NOT be treated
+    // as a user "close" request: onClose persists `enabled: false`, so firing
+    // it here would silently disable the pet on the next launch. The next
+    // reconcile/start simply recreates the window.
     child.on('exit', () => {
-      if (!destroyed) options.onClose?.()
+      if (!destroyed) {
+        // Diagnostic only; nothing to persist.
+        if (typeof console !== 'undefined') console.warn('[desktop-pet] neutralino runtime exited unexpectedly')
+      }
     })
 
     return handle
