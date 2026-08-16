@@ -34,7 +34,8 @@
   }
   #menu button:hover { background: rgba(0, 0, 0, 0.07); }
 
-  /* Status bubbles area (top of the window, above the pet). */
+  /* Status bubbles area (top of the window, above the pet). Alignment is
+     driven by updateBubbleAlignment() so the bubbles hug the pet's edge. */
   #bubbles {
     position: fixed;
     top: 0;
@@ -52,7 +53,7 @@
     font: 12px/1.7 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
   }
   .bubble {
-    max-width: calc(100% - 24px);
+    max-width: 100%;
     min-width: 60px;
     padding: 8px 14px;
     background: rgba(255, 255, 255, 0.96);
@@ -161,17 +162,29 @@
   }
 
   /**
-   * Align the bubble area with the side of the screen the window is on: right
-   * edge when the window sits on the right half, left edge when on the left.
-   * Mirrors the pet's own placement so the bubbles stay visually anchored.
+   * Align the bubbles to the pet's edge: when the pet sits on the right half
+   * of the screen, the bubbles' right edge lines up with the pet's right edge;
+   * on the left half, the bubbles' left edge lines up with the pet's left
+   * edge. The pet is centered in the window (petX/petY), so this keeps the
+   * bubbles hugging the pet — and keeps them clear of the window edges, so
+   * their shadow is never clipped.
    */
   function updateBubbleAlignment() {
-    // winPos is the window's top-left in physical pixels (set by pet.init);
-    // compare its center against the screen center.
     const dpr = window.devicePixelRatio || 1
     const winCenterX = winPos.x + layout.width / 2
     const screenCenterX = (screen.width * dpr) / 2
-    bubblesEl.style.alignItems = winCenterX >= screenCenterX ? 'flex-end' : 'flex-start'
+    const petRightPad = (layout.width - layout.petX - layout.petW) / dpr
+    if (winCenterX >= screenCenterX) {
+      // Right side: bubbles' right edge = pet's right edge.
+      bubblesEl.style.alignItems = 'flex-end'
+      bubblesEl.style.paddingRight = petRightPad + 'px'
+      bubblesEl.style.paddingLeft = '0'
+    } else {
+      // Left side: bubbles' left edge = pet's left edge.
+      bubblesEl.style.alignItems = 'flex-start'
+      bubblesEl.style.paddingLeft = (layout.petX / dpr) + 'px'
+      bubblesEl.style.paddingRight = '0'
+    }
   }
 
   function drawCurrent() {
