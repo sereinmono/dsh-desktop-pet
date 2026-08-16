@@ -55,15 +55,15 @@ describe('PetWindow live settings', () => {
     const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
     expect(handles).toHaveLength(1)
-    // 1× layout: width = max(192, 240) = 240; height = round((104+208)/0.75) = 416.
-    expect(handles[0].opts.width).toBe(240)
+    // 1× layout: width = max(192, 480) = 480; height = round((104+208)/0.75) = 416.
+    expect(handles[0].opts.width).toBe(480)
     expect(handles[0].opts.height).toBe(416)
 
     await w.setScale(2)
     expect(handles).toHaveLength(2)
     expect(handles[0].destroyed).toBe(true)
-    // 2× layout: width = max(384, 480) = 480; height = round((208+416)/0.75) = 832.
-    expect(handles[1].opts.width).toBe(480)
+    // 2× layout: width = max(384, 960) = 960; height = round((208+416)/0.75) = 832.
+    expect(handles[1].opts.width).toBe(960)
     expect(handles[1].opts.height).toBe(832)
     await w.destroy()
   })

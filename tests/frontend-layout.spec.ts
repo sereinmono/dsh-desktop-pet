@@ -28,21 +28,21 @@ describe('frontend layout (pet-render.js)', () => {
   it('reserves a top bubble pad and bottom safe pad', () => {
     const { layoutForScale } = loadRenderer()
     const s1 = layoutForScale(1)
-    // pet is 192×208; topPad = 0.5·208 = 104; width = max(192, 240) = 240;
+    // pet is 192×208; topPad = 0.5·208 = 104; width = max(192, 480) = 480;
     // content height = 104+208 = 312; window height = round(312/0.75) = 416.
     expect(s1.petW).toBe(192)
     expect(s1.petH).toBe(208)
     expect(s1.topPad).toBe(104)
     expect(s1.petY).toBe(104)
-    expect(s1.width).toBe(240)
-    expect(s1.petX).toBe(Math.round((240 - 192) / 2))
+    expect(s1.width).toBe(480)
+    expect(s1.petX).toBe(Math.round((480 - 192) / 2))
     expect(s1.height).toBe(Math.round(312 / 0.75))
 
     const s2 = layoutForScale(2)
     expect(s2.petW).toBe(384)
     expect(s2.petH).toBe(416)
     expect(s2.topPad).toBe(208)
-    expect(s2.width).toBe(480)
+    expect(s2.width).toBe(960)
     expect(s2.height).toBe(Math.round((208 + 416) / 0.75))
   })
 

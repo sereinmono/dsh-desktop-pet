@@ -21,7 +21,7 @@ const CELL_HEIGHT = 208
 const BOTTOM_PAD_FRAC = 0.25
 const TOP_PAD_FRAC = 0.5
 /** Bubble area is at least this multiple of the pet width (for title text). */
-const BUBBLE_MIN_WIDTH_FACTOR = 1.25
+const BUBBLE_MIN_WIDTH_FACTOR = 2.5
 
 /**
  * Compute the window canvas size for a given scale. All returned values are

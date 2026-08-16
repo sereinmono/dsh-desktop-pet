@@ -71,7 +71,7 @@ const IDLE_TRANSIENTS: readonly CodexPetState[] = ['waving']
  */
 const BOTTOM_PAD_FRAC = 0.25
 const TOP_PAD_FRAC = 0.5
-const BUBBLE_MIN_WIDTH_FACTOR = 1.25
+const BUBBLE_MIN_WIDTH_FACTOR = 2.5
 
 /** Window geometry for a scale, matching the frontend's `layoutForScale`. */
 function windowSizeForScale(scale: number): { width: number; height: number; topPad: number; petX: number } {
