@@ -52,13 +52,13 @@
     font: 12px/1.7 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
   }
   .bubble {
-    max-width: calc(100% - 16px);
+    max-width: calc(100% - 24px);
     min-width: 60px;
     padding: 8px 14px;
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid rgba(0, 0, 0, 0.10);
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
     color: #222;
     overflow: hidden;
   }
@@ -157,6 +157,21 @@
     canvas.style.height = css.height + 'px'
     bubblesEl.style.height = cssLayout.topPad + 'px'
     ctx.imageSmoothingEnabled = false
+    updateBubbleAlignment()
+  }
+
+  /**
+   * Align the bubble area with the side of the screen the window is on: right
+   * edge when the window sits on the right half, left edge when on the left.
+   * Mirrors the pet's own placement so the bubbles stay visually anchored.
+   */
+  function updateBubbleAlignment() {
+    // winPos is the window's top-left in physical pixels (set by pet.init);
+    // compare its center against the screen center.
+    const dpr = window.devicePixelRatio || 1
+    const winCenterX = winPos.x + layout.width / 2
+    const screenCenterX = (screen.width * dpr) / 2
+    bubblesEl.style.alignItems = winCenterX >= screenCenterX ? 'flex-end' : 'flex-start'
   }
 
   function drawCurrent() {
@@ -193,14 +208,15 @@
     const d = evt.detail || {}
     nlWinId = d.windowId ?? null
     if (Number.isFinite(d.scale)) layout = layoutForScale(d.scale)
+    // Position is set by the host after creation; mirror it for drag math and
+    // bubble alignment (must precede applyCanvasSize).
+    if (Number.isFinite(d.x) && Number.isFinite(d.y)) winPos = { x: d.x, y: d.y }
     applyCanvasSize()
     if (d.spritesheetUrl && d.spritesheetUrl !== spriteUrl) {
       spriteUrl = d.spritesheetUrl
       atlasReady = false
       atlas.src = spriteUrl
     }
-    // Position is set by the host after creation; mirror it for drag math.
-    if (Number.isFinite(d.x) && Number.isFinite(d.y)) winPos = { x: d.x, y: d.y }
   })
 
   Neutralino.events.on('pet.frame', (evt) => {
@@ -300,6 +316,7 @@
 
     const target = clampDragTarget(dragStart.wx + dx, dragStart.wy + dy, layout, screen.width * dpr, screen.height * dpr)
     winPos = target
+    updateBubbleAlignment()
     const seq = ++moveSeq
     // Fire-and-forget; only the newest move matters.
     Neutralino.window.move(target.x, target.y).catch(() => {})
