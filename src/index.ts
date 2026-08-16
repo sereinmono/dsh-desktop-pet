@@ -18,6 +18,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { registerPetCommand } from './commands'
 import { Config, type PetAction, type PetConfig } from './config'
 import { PetStateMachine } from './core/PetStateMachine'
+import { TaskInfoRegistry } from './core/TaskInfoRegistry'
 import type { NormalizedEvent, SemanticState } from './core/types'
 import { importPetFromDirectory, importPetFromPetdex, restorePetFromSource } from './imports'
 import { createHarnessBridge, type HarnessBridge, type HarnessContext } from './integration/HarnessBridge'
@@ -220,9 +221,27 @@ export function apply(ctx: Context, config: PetConfig): void {
         applyVisibility(state)
       },
     })
+
+    // Bubble text registry: a parallel consumer of the same event stream that
+    // keeps per-task title + reasoning text for the status bubbles. It never
+    // drives the pet's pose; that remains the state machine's job alone.
+    const taskInfo = new TaskInfoRegistry({
+      onChange: (tasks) => {
+        if (disposed) return
+        window?.setTasks(tasks)
+      },
+    })
+
     unsubscribe = bridge.subscribe((event: NormalizedEvent) => {
       if (disposed) return
+      // A title event is a hint for the bubble text, not an activity signal —
+      // it must not perturb the state machine's resolved pose.
+      if (event.type === 'session.title') {
+        taskInfo.setTitle(event.sessionId, event.title)
+        return
+      }
       machine?.onEvent(event)
+      taskInfo.onEvent(event)
     })
 
     // Register the optional /pet debug command.
@@ -395,6 +414,7 @@ export function apply(ctx: Context, config: PetConfig): void {
       unsubscribe?.()
       unregisterCommand?.()
       machine?.dispose()
+      taskInfo.dispose()
       await bridge?.stop().catch(() => {})
       await window?.destroy().catch(() => {})
       bridge = undefined

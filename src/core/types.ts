@@ -50,6 +50,7 @@ export type NormalizedEventType =
   | 'user_input.resolved'
   | 'task.completed'
   | 'task.failed'
+  | 'session.title'
 
 export interface NormalizedEvent {
   type: NormalizedEventType
@@ -58,6 +59,10 @@ export interface NormalizedEvent {
   sessionId?: string
   taskId?: string
   metadata?: Record<string, unknown>
+  /** Session/task title (bold bubble text), carried from harness events. */
+  title?: string
+  /** Latest reasoning text delta (light bubble text), incremental. */
+  thinking?: string
 }
 
 /** The mapping from a semantic state to the Codex renderer pose. */

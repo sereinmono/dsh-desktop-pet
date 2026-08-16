@@ -14,7 +14,7 @@ const renderSource = readFileSync(
 )
 
 function loadRenderer(): {
-  layoutForScale(scale: number): { width: number; height: number; petX: number; petY: number; petW: number; petH: number }
+  layoutForScale(scale: number): { width: number; height: number; topPad: number; petX: number; petY: number; petW: number; petH: number }
   cssSizeFor(layout: { width: number; height: number }, dpr: number): { width: number; height: number }
   clampDragTarget(x: number, y: number, layout: unknown, sw: number, sh: number): { x: number; y: number }
   sourceRect(d: { sx?: number; sy?: number }): { sx: number; sy: number; sw: number; sh: number }
@@ -25,28 +25,34 @@ function loadRenderer(): {
 }
 
 describe('frontend layout (pet-render.js)', () => {
-  it('keeps the pet in the top 75% of the window (bottom pad)', () => {
+  it('reserves a top bubble pad and bottom safe pad', () => {
     const { layoutForScale } = loadRenderer()
     const s1 = layoutForScale(1)
-    // pet is 192×208; height must reserve a bottom pad of 25%.
+    // pet is 192×208; topPad = 0.5·208 = 104; width = max(192, 240) = 240;
+    // content height = 104+208 = 312; window height = round(312/0.75) = 416.
     expect(s1.petW).toBe(192)
     expect(s1.petH).toBe(208)
-    expect(s1.height).toBe(Math.round(208 / 0.75))
-    expect(s1.petY).toBe(0)
+    expect(s1.topPad).toBe(104)
+    expect(s1.petY).toBe(104)
+    expect(s1.width).toBe(240)
+    expect(s1.petX).toBe(Math.round((240 - 192) / 2))
+    expect(s1.height).toBe(Math.round(312 / 0.75))
 
     const s2 = layoutForScale(2)
     expect(s2.petW).toBe(384)
     expect(s2.petH).toBe(416)
-    expect(s2.height).toBe(Math.round(416 / 0.75))
+    expect(s2.topPad).toBe(208)
+    expect(s2.width).toBe(480)
+    expect(s2.height).toBe(Math.round((208 + 416) / 0.75))
   })
 
   it('clamps drag targets so the pet sprite stays fully on screen', () => {
     const { layoutForScale, clampDragTarget } = loadRenderer()
     const layout = layoutForScale(1)
-    // Screen 1920×1080; pet is 192 wide, 208 tall at the window top.
+    // Screen 1920×1080; pet is 192 wide, 208 tall, offset by petX/petY.
     const clamped = clampDragTarget(99999, 99999, layout, 1920, 1080)
-    expect(clamped.x).toBe(1920 - 192)
-    expect(clamped.y).toBe(1080 - 208)
+    expect(clamped.x).toBe(1920 - layout.petX - layout.petW)
+    expect(clamped.y).toBe(1080 - layout.petY - layout.petH)
   })
 
   it('scales the CSS size down by the device pixel ratio', () => {

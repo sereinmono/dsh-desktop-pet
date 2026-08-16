@@ -43,6 +43,23 @@ describe('event-mapping: mapSessionEvent', () => {
     }
   })
 
+  it('carries reasoning-delta text as thinking', () => {
+    const result = mapSessionEvent(session('s1'), { type: 'assistant/chunk', data: { chunk: { type: 'reasoning-delta', text: 'let me think' } } }, 500)
+    expect(result).toEqual({ type: 'agent.thinking', timestamp: 500, sessionId: 's1', thinking: 'let me think' })
+  })
+
+  it('does not carry text for text-delta/tool-call-delta', () => {
+    const text = mapSessionEvent(session('s1'), { type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: 'output' } } }, 500)
+    expect(text?.thinking).toBeUndefined()
+    const tool = mapSessionEvent(session('s1'), { type: 'assistant/chunk', data: { chunk: { type: 'tool-call-delta', text: 'args' } } }, 500)
+    expect(tool?.thinking).toBeUndefined()
+  })
+
+  it('maps session/title to session.title with the title text', () => {
+    const result = mapSessionEvent(session('s1'), { type: 'session/title', data: { title: 'My session' } }, 600)
+    expect(result).toEqual({ type: 'session.title', timestamp: 600, sessionId: 's1', title: 'My session' })
+  })
+
   it('ignores non-activity session events', () => {
     expect(mapSessionEvent(session('s1'), { type: 'user/message', data: {} }, 1)).toBeNull()
   })

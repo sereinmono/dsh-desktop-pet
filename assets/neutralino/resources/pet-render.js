@@ -12,23 +12,59 @@ const CELL_HEIGHT = 208
 /**
  * Layout of the pet inside the window canvas.
  *
- * The pet is drawn at the TOP of the window; `bottomPadFrac` of the window
- * height below it is kept empty. Neutralino transparent windows on Windows
- * have a known dead zone in the bottom ~20% where pointer input never arrives
- * (neutralinojs#1482), so no interactive content may live there.
+ * The pet is drawn with a fixed bubble area ABOVE it (`TOP_PAD_FRAC` of the
+ * pet height) and a bottom pad (`BOTTOM_PAD_FRAC` of the content height).
+ * Neutralino transparent windows on Windows have a known dead zone in the
+ * bottom ~20% where pointer input never arrives (neutralinojs#1482), so no
+ * interactive content may live there — the status bubbles go on TOP.
  */
 const BOTTOM_PAD_FRAC = 0.25
+const TOP_PAD_FRAC = 0.5
+/** Bubble area is at least this multiple of the pet width (for title text). */
+const BUBBLE_MIN_WIDTH_FACTOR = 1.25
 
 /**
- * Compute the window canvas size for a given scale.
+ * Compute the window canvas size for a given scale. All returned values are
+ * physical pixels (the host creates the window at this size).
  * @param scale - display scale applied to the 192×208 cell.
  */
 function layoutForScale(scale) {
   const petW = Math.max(1, Math.round(CELL_WIDTH * scale))
   const petH = Math.max(1, Math.round(CELL_HEIGHT * scale))
-  const width = petW
-  const height = Math.max(petH + 1, Math.round((petH / (1 - BOTTOM_PAD_FRAC))))
-  return { width, height, petX: 0, petY: 0, petW, petH }
+  const topPad = Math.round(petH * TOP_PAD_FRAC)
+  const width = Math.max(petW, Math.round(petW * BUBBLE_MIN_WIDTH_FACTOR))
+  const contentH = topPad + petH
+  const height = Math.max(contentH + 1, Math.round(contentH / (1 - BOTTOM_PAD_FRAC)))
+  return {
+    width,
+    height,
+    topPad,
+    petX: Math.round((width - petW) / 2),
+    petY: topPad,
+    petW,
+    petH,
+  }
+}
+
+/**
+ * CSS display size/layout for a layout under a device pixel ratio.
+ *
+ * The host creates the window in physical pixels, and the webview maps them to
+ * CSS pixels by dividing by `devicePixelRatio`. The canvas pixel buffer stays
+ * at the physical size; DOM elements (bubbles) are laid out in CSS pixels.
+ */
+function cssLayoutFor(layout, dpr) {
+  const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1
+  const div = (v) => v / ratio
+  return {
+    width: div(layout.width),
+    height: div(layout.height),
+    topPad: div(layout.topPad),
+    petX: div(layout.petX),
+    petY: div(layout.petY),
+    petW: div(layout.petW),
+    petH: div(layout.petH),
+  }
 }
 
 /**
@@ -48,19 +84,12 @@ function clampDragTarget(x, y, layout, screenW, screenH) {
 }
 
 /**
- * CSS display size for a layout under a device pixel ratio.
- *
- * The host creates the window in physical pixels, and the webview maps them to
- * CSS pixels by dividing by `devicePixelRatio` (e.g. 150% scaling halves the
- * logical size). The canvas pixel buffer must stay at the physical size so it
- * fills the window exactly; only its CSS size is scaled down.
+ * CSS display size for a layout under a device pixel ratio (legacy alias of
+ * cssLayoutFor's width/height).
  */
 function cssSizeFor(layout, dpr) {
-  const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1
-  return {
-    width: layout.width / ratio,
-    height: layout.height / ratio,
-  }
+  const css = cssLayoutFor(layout, dpr)
+  return { width: css.width, height: css.height }
 }
 
 /**

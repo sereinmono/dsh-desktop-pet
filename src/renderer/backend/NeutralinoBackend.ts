@@ -23,6 +23,7 @@ import { join } from 'node:path'
 
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from './WindowBackend'
 import type { FrameDirective } from '../FrameDecoder'
+import type { TaskInfo } from '../../core/TaskInfoRegistry'
 import { NEUTRALINO_APP_DIR, PETS_DIR, RUNTIME_DIR, USER_PETS_DIR } from '../../paths'
 
 /** Frontend files copied into the per-launch working directory. */
@@ -338,6 +339,10 @@ export class NeutralinoBackend implements WindowBackend {
       present: (directive: FrameDirective) => {
         if (destroyed) return
         conn!.broadcast('pet.frame', directive)
+      },
+      presentTasks: (tasks: TaskInfo[]) => {
+        if (destroyed) return
+        conn!.broadcast('pet.tasks', tasks)
       },
       move: (x: number, y: number) => {
         if (destroyed) return

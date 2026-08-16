@@ -29,10 +29,19 @@ function readEventType(event: unknown): string | undefined {
   return readString(asRecord(event)?.type)
 }
 
-function event(timestamp: number, type: NormalizedEventType, sessionId?: string, metadata?: UnknownRecord): NormalizedEvent {
+function event(
+  timestamp: number,
+  type: NormalizedEventType,
+  sessionId?: string,
+  metadata?: UnknownRecord,
+  title?: string,
+  thinking?: string,
+): NormalizedEvent {
   const normalized: NormalizedEvent = { type, timestamp }
   if (sessionId !== undefined) normalized.sessionId = sessionId
   if (metadata !== undefined) normalized.metadata = metadata
+  if (title !== undefined) normalized.title = title
+  if (thinking !== undefined) normalized.thinking = thinking
   return normalized
 }
 
@@ -96,8 +105,25 @@ export function mapSessionEvent(session: unknown, rawEvent: unknown, timestamp =
       const data = asRecord(eventRecord.data)
       const chunk = asRecord(data?.chunk)
       const chunkType = readString(chunk?.type)
-      if (chunkType === 'text-delta' || chunkType === 'reasoning-delta' || chunkType === 'tool-call-delta') {
+      if (chunkType === 'reasoning-delta') {
+        // Reasoning text is the bubble's light body; carried as an incremental
+        // delta for the registry to aggregate. Never persisted or network-sent.
+        const text = readString(chunk?.text)
+        return event(timestamp, 'agent.thinking', sessionId, undefined, undefined, text)
+      }
+      if (chunkType === 'text-delta' || chunkType === 'tool-call-delta') {
         return event(timestamp, 'agent.thinking', sessionId)
+      }
+      return null
+    }
+
+    case 'session/title': {
+      // The session-title service appends this last-wins title event; the
+      // registry folds it onto the task as the bubble's bold line.
+      const data = asRecord(eventRecord.data)
+      const title = readString(data?.title)
+      if (title !== undefined) {
+        return event(timestamp, 'session.title', sessionId, undefined, title)
       }
       return null
     }

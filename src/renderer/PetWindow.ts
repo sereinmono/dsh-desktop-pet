@@ -15,6 +15,7 @@
 
 import type { CodexPetState, SemanticState } from '../core/types'
 import { SEMANTIC_TO_CODEX } from '../core/types'
+import type { TaskInfo } from '../core/TaskInfoRegistry'
 import type { PetRoot } from '../pets'
 import { AnimationController, type AnimationClock } from './AnimationController'
 import type { FrameDirective } from './FrameDecoder'
@@ -63,18 +64,24 @@ const DEFAULT_POSITION = { x: 40, y: 40 } as const
 const IDLE_TRANSIENTS: readonly CodexPetState[] = ['waving']
 
 /**
- * Fraction of the window height below the pet that stays empty. Neutralino
- * transparent windows on Windows have a dead zone in the bottom ~20% where
- * pointer input never arrives (neutralinojs#1482); keeping the pet in the top
- * 75% keeps drag/hover/click working.
+ * Fractions of the window around the pet. `BOTTOM_PAD_FRAC` keeps a dead
+ * zone (neutralinojs#1482: the bottom ~20% receives no pointer input) below
+ * the pet; `TOP_PAD_FRAC` reserves the status-bubble area above it. Both must
+ * mirror `assets/neutralino/resources/pet-render.js` exactly.
  */
 const BOTTOM_PAD_FRAC = 0.25
+const TOP_PAD_FRAC = 0.5
+const BUBBLE_MIN_WIDTH_FACTOR = 1.25
 
-/** Window size for a scale, matching the frontend's `layoutForScale`. */
-function windowSizeForScale(scale: number): { width: number; height: number } {
+/** Window geometry for a scale, matching the frontend's `layoutForScale`. */
+function windowSizeForScale(scale: number): { width: number; height: number; topPad: number; petX: number } {
   const petW = Math.max(1, Math.round(BASE_WIDTH * scale))
   const petH = Math.max(1, Math.round(BASE_HEIGHT * scale))
-  return { width: petW, height: Math.max(petH + 1, Math.round(petH / (1 - BOTTOM_PAD_FRAC))) }
+  const topPad = Math.round(petH * TOP_PAD_FRAC)
+  const width = Math.max(petW, Math.round(petW * BUBBLE_MIN_WIDTH_FACTOR))
+  const contentH = topPad + petH
+  const height = Math.max(contentH + 1, Math.round(contentH / (1 - BOTTOM_PAD_FRAC)))
+  return { width, height, topPad, petX: Math.round((width - petW) / 2) }
 }
 
 export class PetWindow {
@@ -106,6 +113,7 @@ export class PetWindow {
   private destroyed = false
   private hovered = false
   private dragging = false
+  private lastTasks: TaskInfo[] = []
 
   constructor(options: PetWindowOptions) {
     this.backend = options.backend
@@ -134,13 +142,16 @@ export class PetWindow {
     if (this.destroyed || this.opened) return
     this.opened = true
 
-    const { width, height } = windowSizeForScale(this.scale)
+    const { width, height, topPad, petX } = windowSizeForScale(this.scale)
 
     const opts: WindowBackendOptions = {
       width,
       height,
-      x: this.currentX,
-      y: this.currentY,
+      // currentX/currentY track the pet's top-left on screen; the window's
+      // top-left is shifted up/left by the bubble padding so the pet keeps its
+      // visual position.
+      x: this.currentX - petX,
+      y: this.currentY - topPad,
       alwaysOnTop: true,
       petId: this.pet.petId,
       spritesheetPath: this.pet.spritesheetPath,
@@ -148,9 +159,10 @@ export class PetWindow {
       scale: this.scale,
       clickThrough: this.clickThrough,
       onDrag: (x, y) => {
-        this.currentX = x
-        this.currentY = y
-        this.onDrag?.(x, y)
+        // The backend reports the window's top-left; store the pet's top-left.
+        this.currentX = x + petX
+        this.currentY = y + topPad
+        this.onDrag?.(this.currentX, this.currentY)
       },
       onDragMove: (direction) => {
         this.beginDrag(direction)
@@ -177,7 +189,20 @@ export class PetWindow {
     })
     if (this.animationEnabled) this.controller.start()
     this.applyState(this.semantic)
+    // Re-push the bubble list so a rebuild (scale/pet change) doesn't drop it.
+    this.handle.presentTasks(this.lastTasks)
     if (!this.visible) this.handle.hide()
+  }
+
+  /** Push the running-task bubble list to the frontend. */
+  setTasks(tasks: TaskInfo[]): void {
+    this.lastTasks = tasks
+    if (this.destroyed || !this.handle) return
+    try {
+      this.handle.presentTasks(tasks)
+    } catch {
+      // A failed push must not propagate into the harness.
+    }
   }
 
   /** The current renderer pose (for diagnostics/tests). */

@@ -33,10 +33,89 @@
     cursor: pointer;
   }
   #menu button:hover { background: rgba(0, 0, 0, 0.07); }
+
+  /* Status bubbles area (top of the window, above the pet). */
+  #bubbles {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+    box-sizing: border-box;
+    user-select: none;
+    font: 12px/1.4 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .bubble {
+    max-width: calc(100% - 16px);
+    min-width: 60px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    color: #222;
+    overflow: hidden;
+  }
+  .bubble-title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bubble-thinking {
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #collapse-btn {
+    position: fixed;
+    top: 4px;
+    right: 6px;
+    z-index: 7;
+    display: none;
+    pointer-events: auto;
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.96);
+    color: #555;
+    font: 12px/1 system-ui, sans-serif;
+    cursor: pointer;
+  }
+  #badge {
+    position: fixed;
+    top: 4px;
+    right: 6px;
+    z-index: 7;
+    display: none;
+    pointer-events: auto;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 11px;
+    background: #7c5cff;
+    color: #fff;
+    font: 12px/22px system-ui, sans-serif;
+    text-align: center;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
 </style>
 </head>
 <body>
 <canvas id="pet"></canvas>
+<div id="bubbles"></div>
+<button id="collapse-btn" type="button" aria-label="Collapse">–</button>
+<div id="badge" role="button" aria-label="Show tasks">0</div>
 <div id="menu"><button id="menu-close">Close pet</button></div>
 
 <script src="neutralino.js"></script>
@@ -47,6 +126,9 @@
   const ctx = canvas.getContext('2d')
   const menu = document.getElementById('menu')
   const menuClose = document.getElementById('menu-close')
+  const bubblesEl = document.getElementById('bubbles')
+  const collapseBtn = document.getElementById('collapse-btn')
+  const badge = document.getElementById('badge')
 
   const atlas = new Image()
   let atlasReady = false
@@ -54,21 +136,26 @@
   // Window identity + geometry, provided by the host in `pet.init`.
   let nlWinId = null
   let layout = layoutForScale(1)
+  let cssLayout = cssLayoutFor(layout, window.devicePixelRatio)
   let spriteUrl = null
   let hoverState = false
   let dragging = false
   let dragStart = null
   let moveSeq = 0
+  let collapsed = false
+  let tasks = []
 
   function applyCanvasSize() {
     // The window is created in physical pixels; CSS pixels = physical / dpr.
     // Keep the canvas buffer at the physical size (fills the window exactly,
     // crispest), and scale only the CSS size down.
     const css = cssSizeFor(layout, window.devicePixelRatio)
+    cssLayout = cssLayoutFor(layout, window.devicePixelRatio)
     canvas.width = layout.width
     canvas.height = layout.height
     canvas.style.width = css.width + 'px'
     canvas.style.height = css.height + 'px'
+    bubblesEl.style.height = cssLayout.topPad + 'px'
     ctx.imageSmoothingEnabled = false
   }
 
@@ -130,6 +217,50 @@
     }
   })
 
+  // --- Status bubbles --------------------------------------------------------
+
+  function renderBubbles() {
+    bubblesEl.textContent = ''
+    for (const task of tasks) {
+      const bubble = document.createElement('div')
+      bubble.className = 'bubble'
+      const title = document.createElement('div')
+      title.className = 'bubble-title'
+      title.textContent = task.title || task.taskId
+      bubble.appendChild(title)
+      if (task.thinking) {
+        const thinking = document.createElement('div')
+        thinking.className = 'bubble-thinking'
+        thinking.textContent = task.thinking
+        bubble.appendChild(thinking)
+      }
+      bubblesEl.appendChild(bubble)
+    }
+    badge.textContent = String(tasks.length)
+    updateBubbleVisibility()
+  }
+
+  function updateBubbleVisibility() {
+    const hasTasks = tasks.length > 0
+    bubblesEl.style.display = !collapsed && hasTasks ? 'flex' : 'none'
+    collapseBtn.style.display = !collapsed && hasTasks && hoverState ? 'block' : 'none'
+    badge.style.display = collapsed && hasTasks ? 'block' : 'none'
+  }
+
+  collapseBtn.addEventListener('click', () => {
+    collapsed = true
+    updateBubbleVisibility()
+  })
+  badge.addEventListener('click', () => {
+    collapsed = false
+    updateBubbleVisibility()
+  })
+
+  Neutralino.events.on('pet.tasks', (evt) => {
+    tasks = Array.isArray(evt.detail) ? evt.detail : []
+    renderBubbles()
+  })
+
   // --- Pointer interaction ---------------------------------------------------
 
   let winPos = { x: 0, y: 0 }
@@ -138,6 +269,7 @@
     if (hoverState === state) return
     hoverState = state
     Neutralino.events.broadcast(state ? 'pet.hover' : 'pet.unhover', { t: Date.now() })
+    updateBubbleVisibility()
   }
 
   canvas.addEventListener('pointerenter', () => setHover(true))
@@ -145,6 +277,8 @@
     setHover(false)
     if (dragging) endDrag(true)
   })
+  bubblesEl.addEventListener('pointerenter', () => setHover(true))
+  bubblesEl.addEventListener('pointerleave', () => setHover(false))
 
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return

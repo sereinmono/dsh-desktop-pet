@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PetWindow } from '../src/renderer/PetWindow'
 import type { WindowBackend, WindowBackendOptions, WindowHandle } from '../src/renderer/backend/WindowBackend'
 import type { FrameDirective } from '../src/renderer/FrameDecoder'
+import type { TaskInfo } from '../src/core/TaskInfoRegistry'
 
 function makeBackend() {
   const handles: FakeHandle[] = []
@@ -20,8 +21,10 @@ function makeBackend() {
 class FakeHandle implements WindowHandle {
   shown = true
   destroyed = false
+  tasks: TaskInfo[] = []
   constructor(readonly opts: WindowBackendOptions) {}
   present(_directive: FrameDirective): void {}
+  presentTasks(tasks: TaskInfo[]): void { this.tasks = tasks }
   move(): void {}
   setAlwaysOnTop(): void {}
   show(): void { this.shown = true }
@@ -52,12 +55,16 @@ describe('PetWindow live settings', () => {
     const w = new PetWindow({ backend, pet, scale: 1, alwaysOnTop: true, animationEnabled: false, idleFrequencySec: 20 })
     await w.open()
     expect(handles).toHaveLength(1)
-    expect(handles[0].opts.width).toBe(192)
+    // 1× layout: width = max(192, 240) = 240; height = round((104+208)/0.75) = 416.
+    expect(handles[0].opts.width).toBe(240)
+    expect(handles[0].opts.height).toBe(416)
 
     await w.setScale(2)
     expect(handles).toHaveLength(2)
     expect(handles[0].destroyed).toBe(true)
-    expect(handles[1].opts.width).toBe(384)
+    // 2× layout: width = max(384, 480) = 480; height = round((208+416)/0.75) = 832.
+    expect(handles[1].opts.width).toBe(480)
+    expect(handles[1].opts.height).toBe(832)
     await w.destroy()
   })
 

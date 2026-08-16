@@ -10,6 +10,7 @@
 
 import type { FrameDirective } from '../FrameDecoder'
 import type { PetRoot } from '../../pets'
+import type { TaskInfo } from '../../core/TaskInfoRegistry'
 
 export interface WindowBackendOptions {
   width: number
@@ -50,6 +51,8 @@ export interface WindowBackendOptions {
 export interface WindowHandle {
   /** Present a render directive (the frontend draws the corresponding cell). */
   present(directive: FrameDirective): void
+  /** Push the current running-task bubble list (empty clears the bubbles). */
+  presentTasks(tasks: TaskInfo[]): void
   move(x: number, y: number): void
   setAlwaysOnTop(value: boolean): void
   show(): void
