@@ -49,15 +49,6 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      # Trusted Publishing (OIDC) requires npm CLI >= 11.5.1, but Node 22 bundles
-      # npm 10.x — with which `npm publish` signs provenance yet cannot
-      # authenticate the upload (the registry rejects the PUT with 404). Upgrade
-      # explicitly so OIDC is used for auth.
-      - name: Upgrade npm for Trusted Publishing
-        run: |
-          npm install --global npm@latest
-          npm --version
-
       - name: Install dependencies
         run: npm ci
 
@@ -75,6 +66,16 @@ jobs:
 
       - name: Verify publish contents
         run: npm pack --dry-run
+
+      # Trusted Publishing (OIDC) needs npm CLI >= 11.5.1, but Node 22 bundles
+      # npm 10.x. Under npm 10 the provenance statement is still signed, yet the
+      # registry PUT is unauthenticated and rejected with a 404. Upgrade only
+      # here (after the stock-npm install/build) so `npm ci` keeps working.
+      - name: Upgrade npm for Trusted Publishing
+        if: env.MASTER_TAG == '1'
+        run: |
+          npm install --global npm@latest
+          npm --version
 
       - name: Publish to npm
         if: env.MASTER_TAG == '1'
