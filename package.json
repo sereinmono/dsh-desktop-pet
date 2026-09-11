@@ -4,6 +4,14 @@
   "description": "An optional desktop companion for deepseek-harness that shows ambient status via a small animated pet.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sereinmono/dsh-desktop-pet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sereinmono/dsh-desktop-pet/issues"
+  },
+  "homepage": "https://github.com/sereinmono/dsh-desktop-pet#readme",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
