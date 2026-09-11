@@ -45,7 +45,7 @@ dsh plugin --profile web add D:/deepseek-pet
 
 ```sh
 npm pack
-dsh plugin --profile <name> add /path/to/dsh-desktop-pet-0.1.0.tgz
+dsh plugin --profile <name> add /path/to/dsh-desktop-pet-0.2.0.tgz
 ```
 
 ### 从 Git 仓库安装

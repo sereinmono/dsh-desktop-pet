@@ -1,6 +1,6 @@
 {
   "name": "dsh-desktop-pet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An optional desktop companion for deepseek-harness that shows ambient status via a small animated pet.",
   "type": "module",
   "license": "MIT",

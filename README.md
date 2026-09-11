@@ -50,7 +50,7 @@ Pack the plugin, then install the tarball:
 
 ```sh
 npm pack
-dsh plugin --profile <name> add /path/to/dsh-desktop-pet-0.1.0.tgz
+dsh plugin --profile <name> add /path/to/dsh-desktop-pet-0.2.0.tgz
 ```
 
 ### From a Git repository
